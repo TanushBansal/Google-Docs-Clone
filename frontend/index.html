@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Docs Clone</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- Top-->
+    <header class="topbar">
+        <div class="logo">📄</div>
+
+        <div class="document-info">
+            <input type="text" id="document-title" value="Untitled document">
+            <p>My Docs</p>
+        </div>
+
+        <div class="top-actions">
+            <span id="save-status">All changes saved✔</span>
+            <button id="share-btn">Share</button>
+        </div>
+    </header>
+
+    <!--Toolbar -->
+    <nav class="toolbar">
+
+        <button id="undo-btn" title="Undo">↶</button>
+        <button id="redo-btn" title="Redo">↷</button>
+
+        <span class="separator"></span>
+
+        <select id="block-format" aria-label="Text style">
+            <option value="p">Normal text</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+        </select>
+
+        <select id="font-size" aria-label="Font size">
+            <option value="2">Small</option>
+            <option value="3" selected>Normal</option>
+            <option value="4">Large</option>
+            <option value="5">Extra large</option>
+        </select>
+
+        <span class="separator"></span>
+
+        <button data-command="bold" title="Bold"><b>B</b></button>
+        <button data-command="italic" title="Italic"><i>I</i></button>
+        <button data-command="underline" title="Underline"><u>U</u></button>
+
+        <span class="separator"></span>
+
+        <button data-command="insertUnorderedList" title="Bulleted list">• List</button>
+        <button data-command="insertOrderedList" title="Numbered list">1. List</button>
+
+        <span class="separator"></span>
+
+        <button data-command="justifyLeft" title="Align left"><i class="fa-solid fa-align-left"></i></button>
+        <button data-command="justifyCenter" title="Center">☰</button>
+        <button data-command="justifyRight" title="Align right"><i class="fa-solid fa-align-right"></i></button>
+
+    </nav>
+<div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <button id="new-document-btn" class="new-doc-btn">
+            + New document
+        </button>
+
+        <h3>My Documents</h3>
+
+        <div id="document-list"></div>
+    </aside>
+
+    <!-- Main Area -->
+    <main class="Pages">
+        <div class="document-page">
+            <div
+                id="editor"
+                contenteditable="true"
+                spellcheck="true"
+                role="textbox"
+                aria-label="Document editor"
+                aria-multiline="true"
+            >
+                <h1>Welcome to My Docs</h1>
+                <p>Start typing your document here...</p>
+                <p>You can format text, create lists, and write your own content.</p>
+            </div>
+        </div>
+    </main>
+
+</div>
+
+    <!-- Bottom Bar -->
+    <footer class="statusbar">
+        <span id="word-count">Words: 0</span>
+        <span>Editing mode</span>
+    </footer>
+
+    <script src="script.js"></script>
+
+</body>
+</html>
