@@ -1,0 +1,539 @@
+/* 1. General Setup */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --blue: #1a73e8;
+    --blue-hover: #1765cc;
+    --text: #202124;
+    --muted: #5f6368;
+    --border: #dadce0;
+    --workspace: #f1f3f4;
+    --toolbar: #edf2fa;
+    --sidebar: #f8fafd;
+    --white: #ffffff;
+}
+
+html,
+body {
+    min-height: 100%;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: var(--workspace);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 2. Top Navigation Bar */
+
+.topbar {
+    min-height: 75px;
+    background-color: var(--white);
+    display: flex;
+    align-items: center;
+    padding: 10px 24px;
+    gap: 15px;
+    border-bottom: 1px solid var(--border);
+}
+
+.logo {
+    font-size: 34px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.document-info {
+    flex: 1;
+    min-width: 0;
+}
+
+#document-title {
+    width: 280px;
+    max-width: 100%;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    outline: none;
+    background-color: transparent;
+    color: var(--text);
+    font-size: 18px;
+}
+
+#document-title:hover {
+    border-color: var(--border);
+}
+
+#document-title:focus {
+    border-color: var(--blue);
+    background-color: var(--white);
+}
+
+.document-info p {
+    margin-top: 3px;
+    padding-left: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.top-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+#save-status {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+#share-btn {
+    padding: 10px 22px;
+    border: none;
+    border-radius: 24px;
+    background-color: #c2e7ff;
+    color: #001d35;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#share-btn:hover {
+    background-color: #a8d8f8;
+}
+
+/* 3. Formatting Toolbar */
+
+.toolbar {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 8px 16px;
+    background-color: var(--toolbar);
+    border-bottom: 1px solid var(--border);
+}
+
+.toolbar button,
+.toolbar select {
+    padding: 7px 10px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background-color: transparent;
+    color: #3c4043;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.toolbar button {
+    min-height: 34px;
+}
+
+.toolbar button:hover,
+.toolbar select:hover {
+    background-color: #dce5f3;
+}
+
+.toolbar button:active {
+    background-color: #d2e3fc;
+}
+
+.toolbar select:focus {
+    outline: none;
+    border-color: var(--border);
+    background-color: var(--white);
+}
+
+#block-format {
+    width: 145px;
+}
+
+#font-size {
+    width: 110px;
+}
+
+.separator {
+    width: 1px;
+    height: 24px;
+    margin: 0 5px;
+    background-color: #c6c9ce;
+    flex-shrink: 0;
+}
+
+/* 4. Main Application Layout */
+
+.app-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+/* 5. Sidebar */
+
+.sidebar {
+    width: 245px;
+    flex-shrink: 0;
+    padding: 22px 14px;
+    overflow-y: auto;
+    background-color: var(--sidebar);
+    border-right: 1px solid var(--border);
+}
+
+.new-doc-btn {
+    width: 100%;
+    padding: 13px 16px;
+    margin-bottom: 28px;
+    border: 1px solid #e0e5ec;
+    border-radius: 12px;
+    background-color: var(--white);
+    color: #3c4043;
+    text-align: left;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(60, 64, 67, 0.12);
+    transition: background-color 0.2s ease,
+                box-shadow 0.2s ease;
+}
+
+.new-doc-btn:hover {
+    background-color: #f1f6fd;
+    box-shadow: 0 2px 5px rgba(60, 64, 67, 0.16);
+}
+
+.sidebar h3 {
+    margin: 0 0 14px 10px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+/* 6. Document List */
+
+#document-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.document-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    padding: 10px;
+    margin-bottom: 2px;
+    border-radius: 8px;
+    color: #3c4043;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s ease,
+                color 0.15s ease;
+}
+
+.document-item:hover {
+    background-color: #e8eaed;
+}
+
+.document-item.active {
+    background-color: #d3e3fd;
+    color: #174ea6;
+}
+
+.document-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.delete-document-btn {
+    flex-shrink: 0;
+    padding: 5px;
+    border: none;
+    border-radius: 5px;
+    background-color: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.delete-document-btn:hover {
+    background-color: #fce8e6;
+    color: #b3261e;
+}
+
+/* 7. Editor Workspace */
+
+.Pages{
+    flex: 1;
+    min-width: 0;
+    padding: 30px 24px 50px;
+    overflow: auto;
+    background-color: var(--workspace);
+}
+
+.document-page {
+    width: 816px;
+    max-width: 100%;
+    min-height: 1056px;
+    margin: 0 auto;
+    padding: 80px 85px;
+    border: 1px solid #e2e5e9;
+    background-color: var(--white);
+    box-shadow: 0 2px 8px rgba(60, 64, 67, 0.12);
+}
+
+/* 8. Editable Document Content */
+
+#editor {
+    min-height: 850px;
+    outline: none;
+    color: var(--text);
+    caret-color: var(--blue);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+#editor:focus {
+    outline: none;
+}
+
+#editor h1 {
+    margin: 0 0 20px;
+    font-size: 30px;
+    line-height: 1.3;
+}
+
+#editor h2 {
+    margin: 24px 0 12px;
+    font-size: 24px;
+    line-height: 1.4;
+}
+
+#editor h3 {
+    margin: 20px 0 10px;
+    font-size: 20px;
+    line-height: 1.4;
+}
+
+#editor p {
+    margin: 0 0 14px;
+}
+
+#editor ul,
+#editor ol {
+    padding-left: 30px;
+    margin-bottom: 15px;
+}
+
+#editor li {
+    margin-bottom: 5px;
+}
+
+#editor blockquote {
+    margin: 18px 0;
+    padding-left: 16px;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+}
+
+/* 9. Bottom Status Bar */
+
+.statusbar {
+    position: static;
+    width: 100%;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 20px;
+    border-top: 1px solid var(--border);
+    background-color: var(--white);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+/* 10. Keyboard Accessibility */
+
+button:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
+
+/* 11. Tablet Layout */
+
+@media (max-width: 900px) {
+    .sidebar {
+        width: 205px;
+    }
+
+    .workspace {
+        padding: 22px 16px 40px;
+    }
+
+    .document-page {
+        padding: 55px 45px;
+    }
+}
+
+/* 12. Mobile Layout */
+
+@media (max-width: 650px) {
+    .topbar {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .logo {
+        font-size: 28px;
+    }
+
+    #document-title {
+        width: 100%;
+        font-size: 15px;
+    }
+
+    .top-actions {
+        gap: 6px;
+    }
+
+    #save-status {
+        max-width: 90px;
+        font-size: 10px;
+    }
+
+    #share-btn {
+        padding: 9px 13px;
+        font-size: 12px;
+    }
+
+    .toolbar {
+        padding: 6px;
+        gap: 2px;
+    }
+
+    .toolbar button,
+    .toolbar select {
+        padding: 6px;
+        font-size: 12px;
+    }
+
+    #block-format {
+        width: 125px;
+    }
+
+    #font-size {
+        width: 90px;
+    }
+
+    .sidebar {
+        width: 145px;
+        padding: 12px 6px;
+    }
+
+    .sidebar h3 {
+        margin-left: 5px;
+        font-size: 10px;
+    }
+
+    .new-doc-btn {
+        padding: 9px;
+        font-size: 12px;
+    }
+
+    .document-item {
+        gap: 4px;
+        padding: 7px 5px;
+        font-size: 12px;
+    }
+
+    .workspace {
+        padding: 15px 8px 25px;
+    }
+
+    .document-page {
+        min-height: 750px;
+        padding: 30px 22px;
+    }
+
+    #editor {
+        min-height: 650px;
+        font-size: 15px;
+    }
+
+    #editor h1 {
+        font-size: 25px;
+    }
+
+    #editor h2 {
+        font-size: 21px;
+    }
+
+    #editor h3 {
+        font-size: 18px;
+    }
+
+    .statusbar {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+}
+
+/* 13. Very Small Screens */
+
+@media (max-width: 420px) {
+    .sidebar {
+        width: 115px;
+        padding: 10px 5px;
+    }
+
+    .new-doc-btn {
+        padding: 8px 6px;
+        font-size: 11px;
+    }
+
+    .document-item {
+        font-size: 11px;
+    }
+
+    .delete-document-btn {
+        padding: 3px;
+    }
+
+    .document-page {
+        padding: 25px 16px;
+    }
+
+    .toolbar {
+        gap: 1px;
+    }
+
+    .toolbar button,
+    .toolbar select {
+        padding: 5px;
+    }
+
+    .separator {
+        margin: 0 2px;
+    }
+}
