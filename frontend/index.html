@@ -15,37 +15,49 @@
         <div class="logo">📄</div>
 
         <div class="document-info">
-            <input type="text" id="document-title" value="Untitled document">
+            <input type="text" id="document-title" value="Untitled document" title="Document Name">
             <p>My Docs</p>
         </div>
 
         <div class="top-actions">
-            <span id="save-status">All changes saved✔</span>
+            <span id="save-status">All changes saved</span>
             <button id="share-btn">Share</button>
         </div>
     </header>
 
     <!--Toolbar -->
     <nav class="toolbar">
-
         <button id="undo-btn" title="Undo">↶</button>
         <button id="redo-btn" title="Redo">↷</button>
 
         <span class="separator"></span>
 
-        <select id="block-format" aria-label="Text style">
+        <select id="block-format" title="Text style">
             <option value="p">Normal text</option>
             <option value="h1">Heading 1</option>
             <option value="h2">Heading 2</option>
             <option value="h3">Heading 3</option>
         </select>
-
-        <select id="font-size" aria-label="Font size">
-            <option value="2">Small</option>
-            <option value="3" selected>Normal</option>
-            <option value="4">Large</option>
-            <option value="5">Extra large</option>
+        <span class="separator"></span>
+        <select id="font-family" title="Font family">
+            <option value="Arial">Arial</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Courier New">Courier New</option>
         </select>
+
+        <span class="separator"></span>
+
+        <select id="font-size" title="Font size">
+            <option value="2">10</option>
+            <option value="3" selected>12</option>
+            <option value="4">14</option>
+            <option value="5">18</option>
+            <option value="6">24</option>
+            <option value="7">36</option>
+        </select>
+
 
         <span class="separator"></span>
 
@@ -59,6 +71,49 @@
         <button data-command="insertOrderedList" title="Numbered list">1. List</button>
 
         <span class="separator"></span>
+        
+        <div class="color-control">
+    <button
+        type="button"
+        id="text-color-btn"
+        class="color-btn"
+        title="Text colour"
+    >
+        <span class="color-letter">A</span>
+        <span id="text-color-indicator" class="color-indicator"></span>
+        <span class="dropdown-arrow">▾</span>
+    </button>
+
+    <input
+        type="color"
+        id="text-color"
+        value="#000000"
+        class="hidden-color-input"
+    >
+        </div>
+<div class="color-control">
+    <button
+        type="button"
+        id="highlight-btn"
+        class="color-btn"
+        title="Highlight text"
+        aria-pressed="false"
+    >
+        <span>🖍</span>
+        <span id="highlight-indicator" class="color-indicator highlight-indicator"></span>
+        <span class="dropdown-arrow">▾</span>
+    </button>
+
+    <input
+        type="color"
+        id="highlight-color"
+        value="#ffff00"
+        class="hidden-color-input"
+        aria-label="Choose highlight colour"
+    >
+</div>
+
+
 
         <button data-command="justifyLeft" title="Align left"><i class="fa-solid fa-align-left"></i></button>
         <button data-command="justifyCenter" title="Center">☰</button>
@@ -86,12 +141,8 @@
                 contenteditable="true"
                 spellcheck="true"
                 role="textbox"
-                aria-label="Document editor"
                 aria-multiline="true"
             >
-                <h1>Welcome to My Docs</h1>
-                <p>Start typing your document here...</p>
-                <p>You can format text, create lists, and write your own content.</p>
             </div>
         </div>
     </main>
@@ -100,7 +151,7 @@
 
     <!-- Bottom Bar -->
     <footer class="statusbar">
-        <span id="word-count">Words: 0</span>
+        <span id="word-count" style="background-color:#E8F0FE;color: #1A3C70; font-size: 16px;">Words: 0</span>
         <span>Editing mode</span>
     </footer>
 
