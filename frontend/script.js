@@ -1,4 +1,5 @@
-// ======================================
+
+ // ======================================
 // GOOGLE DOCS CLONE - DOCUMENT MANAGER
 // ======================================
 const API_URL = "http://localhost:3000/api/documents";
@@ -22,6 +23,7 @@ async function apiRequest(endpoint = "", options = {}) {
 
     return data;
 }
+
 const editor = document.getElementById("editor");
 const titleInput = document.getElementById("document-title");
 const saveStatus = document.getElementById("save-status");
@@ -29,6 +31,7 @@ const wordCount = document.getElementById("word-count");
 
 const blockFormat = document.getElementById("block-format");
 const fontSize = document.getElementById("font-size");
+const fontFamily = document.getElementById("font-family");
 
 const undoButton = document.getElementById("undo-btn");
 const redoButton = document.getElementById("redo-btn");
@@ -58,7 +61,7 @@ function createDocument(title = "Untitled document") {
     return {
         id: crypto.randomUUID(),
         title: title,
-        content: "<h1>Untitled document</h1><p>Start typing here...</p>",
+        content:"",
         updatedAt: new Date().toISOString()
     };
 }
@@ -98,6 +101,7 @@ async function loadDocuments() {
         alert("Could not load documents. Check that your backend is running.");
     }
 }
+
 
 // ======================================
 // SAVE ALL DOCUMENTS TO BROWSER STORAGE
@@ -294,7 +298,7 @@ async function newDocument() {
             method: "POST",
             body: JSON.stringify({
                 title: "Untitled document",
-                content: "<h1>Untitled document</h1><p>Start typing here...</p>"
+                content: ""
             })
         });
 
@@ -312,10 +316,11 @@ async function newDocument() {
         alert("Could not create the document. Check the backend.");
     }
 }
+
+
 // ======================================
 // DELETE A DOCUMENT
 // ======================================
-
 
 async function deleteDocument(id) {
     const docToDelete = documents.find(function(doc) {
@@ -371,7 +376,7 @@ async function deleteDocument(id) {
 // FORMATTING CONTROLS
 // ======================================
 
-
+// Existing toolbar buttons: bold, italic, underline, alignment, etc.
 document.querySelectorAll("[data-command]").forEach(function(button) {
     button.addEventListener("mousedown", function(event) {
         event.preventDefault();
@@ -390,11 +395,12 @@ document.querySelectorAll("[data-command]").forEach(function(button) {
     });
 });
 
-// Save the text selection before interacting with dropdowns
-let savedRange = null;
 
-editor.addEventListener("mouseup", saveEditorSelection);
-editor.addEventListener("keyup", saveEditorSelection);
+// ======================================
+// SAVE AND RESTORE TEXT SELECTION
+// ======================================
+
+let savedRange = null;
 
 function saveEditorSelection() {
     const selection = window.getSelection();
@@ -410,7 +416,9 @@ function saveEditorSelection() {
 }
 
 function restoreEditorSelection() {
-    if (!savedRange) return;
+    if (!savedRange) {
+        return;
+    }
 
     editor.focus();
 
@@ -419,7 +427,14 @@ function restoreEditorSelection() {
     selection.addRange(savedRange);
 }
 
-// Text style dropdown
+editor.addEventListener("mouseup", saveEditorSelection);
+editor.addEventListener("keyup", saveEditorSelection);
+
+
+// ======================================
+// TEXT STYLE DROPDOWN
+// ======================================
+
 blockFormat.addEventListener("mousedown", saveEditorSelection);
 
 blockFormat.addEventListener("change", function() {
@@ -434,7 +449,117 @@ blockFormat.addEventListener("change", function() {
     markAsEdited();
 });
 
-// Font size dropdown
+
+function getCurrentBlock() {
+    const selection = window.getSelection();
+
+    if (!selection || !selection.rangeCount) return null;
+
+    let node = selection.focusNode;
+
+    if (!node) return null;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        node = node.parentElement;
+    }
+
+    if (!node || !editor.contains(node)) return null;
+
+    return node.closest("p, h1, h2, h3, h4, blockquote");
+}
+
+function updateBlockFormat() {
+    const block = getCurrentBlock();
+
+    if (block && editor.contains(block)) {
+        blockFormat.value = block.tagName.toLowerCase();
+    } else if (editor.contains(document.activeElement)) {
+        blockFormat.value = "p";
+    }
+}
+
+// Apply the selected block style
+blockFormat.addEventListener("mousedown", saveEditorSelection);
+
+blockFormat.addEventListener("change", function() {
+    restoreEditorSelection();
+
+    document.execCommand(
+        "formatBlock",
+        false,
+        blockFormat.value
+    );
+
+    markAsEdited();
+    updateBlockFormat();
+});
+
+// When Enter is pressed inside a heading,
+// make the new line normal text if the browser keeps it as a heading.
+editor.addEventListener("keydown", function(event) {
+    if (event.key !== "Enter" || event.shiftKey) return;
+
+    const previousBlock = getCurrentBlock();
+
+    if (
+        !previousBlock ||
+        !/^H[1-3]$/.test(previousBlock.tagName)
+    ) {
+        return;
+    }
+
+    setTimeout(function() {
+        const currentBlock = getCurrentBlock();
+
+        if (
+            currentBlock &&
+            /^H[1-3]$/.test(currentBlock.tagName)
+        ) {
+            document.execCommand("formatBlock", false, "p");
+            markAsEdited();
+        }
+
+        updateBlockFormat();
+    }, 0);
+});
+
+// Keep the selector synchronized with the cursor
+editor.addEventListener("click", updateBlockFormat);
+editor.addEventListener("keyup", updateBlockFormat);
+editor.addEventListener("mouseup", updateBlockFormat);
+editor.addEventListener("input", updateBlockFormat);
+
+document.addEventListener("selectionchange", function() {
+    if (editor.contains(document.activeElement)) {
+        updateBlockFormat();
+    }
+});
+
+
+
+// ======================================
+// FONT FAMILY DROPDOWN
+// ======================================
+
+fontFamily.addEventListener("mousedown", saveEditorSelection);
+
+fontFamily.addEventListener("change", function() {
+    restoreEditorSelection();
+
+    document.execCommand(
+        "fontName",
+        false,
+        fontFamily.value
+    );
+
+    markAsEdited();
+});
+
+
+// ======================================
+// FONT SIZE DROPDOWN
+// ======================================
+
 fontSize.addEventListener("mousedown", saveEditorSelection);
 
 fontSize.addEventListener("change", function() {
@@ -448,6 +573,195 @@ fontSize.addEventListener("change", function() {
 
     markAsEdited();
 });
+
+ // ======================================
+// TEXT COLOUR AND HIGHLIGHT COLOUR
+// ======================================
+
+
+ // ======================================
+// TEXT COLOUR AND HIGHLIGHT BUTTONS
+// ======================================
+
+const textColorBtn = document.getElementById("text-color-btn");
+const textColorInput = document.getElementById("text-color");
+const textColorIndicator = document.getElementById("text-color-indicator");
+
+const highlightBtn = document.getElementById("highlight-btn");
+const highlightInput = document.getElementById("highlight-color");
+const highlightIndicator = document.getElementById("highlight-indicator");
+
+let currentTextColor = "#000000";
+let currentHighlightColor = "#ffff00";
+let highlightMode = false;
+
+
+// Prevent toolbar clicks from immediately losing editor selection
+textColorBtn.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+    saveEditorSelection();
+});
+
+highlightBtn.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+    saveEditorSelection();
+});
+
+
+// Open text colour options
+textColorBtn.addEventListener("click", function() {
+    saveEditorSelection();
+    textColorInput.click();
+});
+
+
+// Apply text colour only after the user picks a colour
+textColorInput.addEventListener("input", function() {
+    currentTextColor = textColorInput.value;
+    textColorIndicator.style.backgroundColor = currentTextColor;
+});
+
+textColorInput.addEventListener("change", function() {
+    restoreEditorSelection();
+
+    document.execCommand(
+        "foreColor",
+        false,
+        currentTextColor
+    );
+
+    markAsEdited();
+    saveEditorSelection();
+});
+
+
+
+ // Toggle highlight mode
+
+
+highlightBtn.addEventListener("click", function() {
+    saveEditorSelection();
+    restoreEditorSelection();
+
+    highlightMode = !highlightMode;
+    console.log("Highlight mode:", highlightMode);
+console.log("Button clicked!");
+
+    highlightBtn.classList.toggle("active", highlightMode);
+    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
+
+    if (highlightMode) {
+        highlightInput.click();
+        return;
+    }
+
+    // Move the cursor to a position with no visible highlight.
+    const selection = window.getSelection();
+
+    if (!selection || !selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0).cloneRange();
+    range.collapse(false);
+
+    let node = range.startContainer;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        node = node.parentElement;
+    }
+
+    const highlightedElement = node?.closest?.(
+        'mark, span[style*="background-color"], font[style*="background-color"]'
+    );
+
+    if (!highlightedElement || !editor.contains(highlightedElement)) {
+        saveEditorSelection();
+        return;
+    }
+
+    // Use the editor's white page background to mask
+    // the highlight only for newly typed text.
+    const marker = document.createElement("span");
+    marker.style.backgroundColor = "#ffffff";
+
+    const cursorText = document.createTextNode("\u200B");
+    marker.appendChild(cursorText);
+
+    range.insertNode(marker);
+
+    const newRange = document.createRange();
+    newRange.setStart(cursorText, 1);
+    newRange.collapse(true);
+
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+
+    saveEditorSelection();
+    markAsEdited();
+});
+
+editor.addEventListener("beforeinput", function(event) {
+    if (highlightMode) return;
+
+    // Do not interfere with deletions, formatting, or other edits.
+    if (event.inputType !== "insertText") return;
+
+    const selection = window.getSelection();
+
+    if (!selection || !selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+
+    if (!editor.contains(range.startContainer)) return;
+
+    let node = range.startContainer;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        node = node.parentElement;
+    }
+
+    const highlightedElement = node?.closest?.(
+        'mark, span[style*="background-color"], font[style*="background-color"]'
+    );
+
+    if (highlightedElement && editor.contains(highlightedElement)) {
+        // Remove the inherited highlight from the typing position only.
+        const parent = highlightedElement.parentNode;
+        const text = document.createTextNode("");
+        parent.insertBefore(text, highlightedElement.nextSibling);
+
+        const newRange = document.createRange();
+        newRange.setStart(text, 0);
+        newRange.collapse(true);
+
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+    }
+});
+
+
+
+
+
+// Preview the selected highlight colour
+highlightInput.addEventListener("input", function() {
+    currentHighlightColor = highlightInput.value;
+    highlightIndicator.style.backgroundColor = currentHighlightColor;
+});
+
+
+
+highlightInput.addEventListener("change", function() {
+    if (!highlightMode) return;
+
+    restoreEditorSelection();
+
+    document.execCommand("styleWithCSS", false, true);
+    document.execCommand("hiliteColor", false, currentHighlightColor);
+
+    markAsEdited();
+    saveEditorSelection();
+});
+
 
 
 
@@ -465,7 +779,6 @@ undoButton.addEventListener("click", function() {
     markAsEdited();
 });
 
-
 redoButton.addEventListener("mousedown", function(event) {
     event.preventDefault();
 });
@@ -474,6 +787,33 @@ redoButton.addEventListener("click", function() {
     editor.focus();
     document.execCommand("redo");
     markAsEdited();
+});
+///
+////
+function updateFormattingButtons() {
+    const commands = ["bold", "italic", "underline"];
+
+    commands.forEach(command => {
+        const button = document.querySelector(
+            `[data-command="${command}"]`
+        );
+
+        if (!button) return;
+
+        const isActive = document.queryCommandState(command);
+
+        button.classList.toggle("active", isActive);
+    });
+}
+
+editor.addEventListener("keyup", updateFormattingButtons);
+editor.addEventListener("mouseup", updateFormattingButtons);
+editor.addEventListener("input", updateFormattingButtons);
+
+document.addEventListener("selectionchange", () => {
+    if (editor.contains(document.activeElement)) {
+        updateFormattingButtons();
+    }
 });
 // ======================================
 // EVENT LISTENERS
