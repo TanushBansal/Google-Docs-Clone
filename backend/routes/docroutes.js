@@ -1,81 +1,136 @@
+
 const express = require("express");
+const mongoose = require("mongoose");
+const Document = require("../models/Document");
+
 const router = express.Router();
 
-// Temporary storage (resets when the server restarts)
-let documents = [];
-
 // GET: Fetch all documents
-router.get("/", (req, res) => {
-    res.json(documents);
+router.get("/", async function (req, res) {
+    try {
+        const documents = await Document.find().sort({
+            updatedAt: -1
+        });
+
+        res.json(documents);
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to fetch documents"
+        });
+    }
 });
 
-// POST: Create a document
-router.post("/", (req, res) => {
-    const { title, content } = req.body;
+// POST: Create a new document
+router.post("/", async function (req, res) {
+    try {
+        const document = await Document.create({
+            title: req.body.title || "Untitled document",
+            content: req.body.content || ""
+        });
 
-    const document = {
-        id: Date.now().toString(),
-        title: title || "Untitled document",
-        content: content || "",
-        updatedAt: new Date()
-    };
-
-    documents.push(document);
-
-    res.status(201).json(document);
+        res.status(201).json(document);
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to create document"
+        });
+    }
 });
 
 // GET: Fetch one document by ID
-router.get("/:id", (req, res) => {
-    const document = documents.find(
-        doc => doc.id === req.params.id
-    );
+router.get("/:id", async function (req, res) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({
+                message: "Invalid document ID"
+            });
+        }
 
-    if (!document) {
-        return res.status(404).json({
-            message: "Document not found"
+        const document = await Document.findById(req.params.id);
+
+        if (!document) {
+            return res.status(404).json({
+                message: "Document not found"
+            });
+        }
+
+        res.json(document);
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to fetch document"
         });
     }
-
-    res.json(document);
 });
 
 // PUT: Update a document
-router.put("/:id", (req, res) => {
-    const document = documents.find(
-        doc => doc.id === req.params.id
-    );
+router.put("/:id", async function (req, res) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({
+                message: "Invalid document ID"
+            });
+        }
 
-    if (!document) {
-        return res.status(404).json({
-            message: "Document not found"
+        const updates = {};
+
+        if (typeof req.body.title === "string") {
+            updates.title = req.body.title;
+        }
+
+        if (typeof req.body.content === "string") {
+            updates.content = req.body.content;
+        }
+
+        const document = await Document.findByIdAndUpdate(
+            req.params.id,
+            { $set: updates },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+
+        if (!document) {
+            return res.status(404).json({
+                message: "Document not found"
+            });
+        }
+
+        res.json(document);
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to update document"
         });
     }
-
-    document.title = req.body.title ?? document.title;
-    document.content = req.body.content ?? document.content;
-    document.updatedAt = new Date();
-
-    res.json(document);
 });
 
 // DELETE: Delete a document
-router.delete("/:id", (req, res) => {
-    const originalLength = documents.length;
+router.delete("/:id", async function (req, res) {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({
+                message: "Invalid document ID"
+            });
+        }
 
-    documents = documents.filter(
-        doc => doc.id !== req.params.id
-    );
+        const document = await Document.findByIdAndDelete(
+            req.params.id
+        );
 
-    if (documents.length === originalLength) {
-        return res.status(404).json({
-            message: "Document not found"
+        if (!document) {
+            return res.status(404).json({
+                message: "Document not found"
+            });
+        }
+
+        res.json({
+            message: "Document deleted successfully",
+            id: document.id
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to delete document"
         });
     }
-
-    res.json({
-        message: "Document deleted successfully"
-    });
 });
 
 module.exports = router;
