@@ -667,3 +667,18 @@ select:focus-visible {
         margin: 0 2px;
     }
 }
+[hidden] { display: none !important; }
+#workspace { min-height:100vh; display:flex; flex-direction:column; }
+.login-screen { min-height:100vh; display:grid; place-items:center; padding:24px; }
+.login-card { background:white; padding:40px; border-radius:18px; box-shadow:0 4px 24px #0001; max-width:480px; }
+.login-card p, dialog p { margin:16px 0; line-height:1.5; }
+dialog { margin:auto; padding:28px; border:1px solid #dadce0; border-radius:16px; width:min(560px,95vw); }
+dialog::backdrop { background:#0006; }
+dialog label { display:block; margin:14px 0; }
+dialog input, dialog select { padding:8px; max-width:100%; }
+dialog button, #logout-btn, #retry-save { padding:8px 12px; border:1px solid #dadce0; border-radius:6px; cursor:pointer; }
+button:disabled, select:disabled { opacity:.5; cursor:default; }
+#account-name { font-size:12px; overflow-wrap:anywhere; }
+#access-role { font-size:12px; text-transform:capitalize; }
+#permission-list p { display:flex; justify-content:space-between; gap:12px; overflow-wrap:anywhere; }
+@media(max-width:650px) { .top-actions { flex-wrap:wrap; } #account-name { width:100%; } }

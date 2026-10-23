@@ -2,13 +2,14 @@
  // ======================================
 // GOOGLE DOCS CLONE - DOCUMENT MANAGER
 // ======================================
-const API_URL = "http://localhost:3000/api/documents";
+const API_URL = "/api/documents";
 
 async function apiRequest(endpoint = "", options = {}) {
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers: {
             "Content-Type": "application/json",
+            "X-Requested-With": "DocsApp",
             ...(options.headers || {})
         }
     });
@@ -51,6 +52,8 @@ const ACTIVE_KEY = "myDocsActiveDocument";
 let documents = [];
 let activeDocumentId = null;
 let saveTimer = null;
+let pendingSave = Promise.resolve();
+let dirtyDocuments = new Set();
 
 
 // ======================================
@@ -77,7 +80,7 @@ async function loadDocuments() {
 
         documents = await apiRequest();
 
-        const savedActiveId = localStorage.getItem(ACTIVE_KEY);
+        const savedActiveId = new URLSearchParams(location.search).get("doc") || localStorage.getItem(ACTIVE_KEY);
 
         const activeExists = documents.some(function(doc) {
             return doc.id === savedActiveId;
@@ -108,23 +111,8 @@ async function loadDocuments() {
 // ======================================
 
 function saveAllDocuments() {
-    try {
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify(documents)
-        );
-
-        localStorage.setItem(
-            ACTIVE_KEY,
-            activeDocumentId || ""
-        );
-
-        return true;
-    } catch (error) {
-        console.error("Could not save documents:", error);
-        saveStatus.textContent = "Save failed";
-        return false;
-    }
+    localStorage.setItem(ACTIVE_KEY, activeDocumentId || '');
+    return true;
 }
 
 
@@ -160,37 +148,32 @@ function updateWordCount() {
 
 function markAsEdited() {
     const doc = getActiveDocument();
-
-    if (!doc) {
-        return;
-    }
-
-    doc.title = titleInput.value.trim() || "Untitled document";
+    if (!doc || doc.role === 'viewer') return;
+    doc.title = titleInput.value.trim() || 'Untitled document';
     doc.content = editor.innerHTML;
-    doc.updatedAt = new Date().toISOString();
-
-    saveStatus.textContent = "Saving...";
+    dirtyDocuments.add(doc.id);
+    saveStatus.textContent = 'Saving...';
     updateWordCount();
     renderDocumentList();
-
     clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => persistDocument(doc).catch(() => {}), 500);
+}
 
-    saveTimer = setTimeout(async function() {
+function persistDocument(doc) {
+    if (!doc || doc.role === 'viewer' || !dirtyDocuments.has(doc.id)) return pendingSave;
+    const snapshot = {title: doc.title, content: doc.content};
+    const task = pendingSave.catch(() => {}).then(async () => {
         try {
-            await apiRequest("/" + doc.id, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: doc.title,
-                    content: doc.content
-                })
-            });
-
-            saveStatus.textContent = "All changes saved";
-        } catch (error) {
-            console.error("Autosave failed:", error);
-            saveStatus.textContent = "Save failed";
+            await apiRequest('/' + doc.id, {method:'PUT', body:JSON.stringify(snapshot)});
+            if (doc.title === snapshot.title && doc.content === snapshot.content) dirtyDocuments.delete(doc.id);
+            if(activeDocumentId === doc.id) saveStatus.textContent = dirtyDocuments.has(doc.id) ? 'Saving...' : 'All changes saved';
+        } catch(error) {
+            saveStatus.textContent = 'Save failed — keep this tab open and retry';
+            throw error;
         }
-    }, 500);
+    });
+    pendingSave = task;
+    return task;
 }
 
 
@@ -225,7 +208,7 @@ function renderDocumentList() {
 
         item.appendChild(icon);
         item.appendChild(name);
-        item.appendChild(deleteButton);
+        if (doc.role === 'owner') item.appendChild(deleteButton);
 
         item.addEventListener("click", function() {
             openDocument(doc.id);
@@ -245,8 +228,9 @@ function renderDocumentList() {
 // OPEN AN EXISTING DOCUMENT
 // ======================================
 
-function openDocument(id) {
+async function openDocument(id) {
     clearTimeout(saveTimer);
+    try { await persistDocument(getActiveDocument()); } catch { return; }
 
     const doc = documents.find(function(item) {
         return item.id === id;
@@ -256,7 +240,17 @@ function openDocument(id) {
         return;
     }
 
+    try { Object.assign(doc, await apiRequest('/' + doc.id)); }
+    catch(error) { saveStatus.textContent = error.message; return; }
     activeDocumentId = doc.id;
+    savedRange = null;
+    const canEdit = doc.role !== 'viewer';
+    editor.contentEditable = String(canEdit);
+    titleInput.disabled = !canEdit;
+    document.querySelectorAll('.toolbar button, .toolbar select, .toolbar input').forEach(control => control.disabled = !canEdit);
+    shareButton.disabled = doc.role !== 'owner';
+    document.getElementById('access-role').textContent = doc.role;
+    history.replaceState(null, '', '?doc=' + encodeURIComponent(doc.id));
 
     titleInput.value = doc.title;
     editor.innerHTML = doc.content;
@@ -279,20 +273,7 @@ async function newDocument() {
 
         const currentDoc = getActiveDocument();
 
-        if (currentDoc) {
-            currentDoc.title =
-                titleInput.value.trim() || "Untitled document";
-
-            currentDoc.content = editor.innerHTML;
-
-            await apiRequest("/" + currentDoc.id, {
-                method: "PUT",
-                body: JSON.stringify({
-                    title: currentDoc.title,
-                    content: currentDoc.content
-                })
-            });
-        }
+        await persistDocument(currentDoc);
 
         const newDoc = await apiRequest("", {
             method: "POST",
@@ -308,7 +289,7 @@ async function newDocument() {
         localStorage.setItem(ACTIVE_KEY, activeDocumentId);
 
         renderDocumentList();
-        openDocument(newDoc.id);
+        await openDocument(newDoc.id);
 
     } catch (error) {
         console.error("Could not create document:", error);
@@ -825,15 +806,16 @@ titleInput.addEventListener("input", markAsEdited);
 
 newDocumentButton.addEventListener("click", newDocument);
 
-shareButton.addEventListener("click", function() {
-    alert(
-        "Sharing and permissions will be added when we build the backend."
-    );
-});
+shareButton.addEventListener('click', () => showSharing().catch(error => alert(error.message)));
 
 
 // ======================================
 // START APPLICATION
 // ======================================
 
-loadDocuments();
+startAuthentication();
+
+window.addEventListener('beforeunload', event => {
+    if(dirtyDocuments.size) { event.preventDefault(); event.returnValue = ''; }
+});
+document.getElementById('retry-save').addEventListener('click', () => persistDocument(getActiveDocument()).catch(error => alert(error.message)));
