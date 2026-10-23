@@ -3,6 +3,14 @@ const mongoose = require("mongoose");
 
 const documentSchema = new mongoose.Schema(
     {
+        owner: { type: String, index: true },
+        permissions: {
+            type: [new mongoose.Schema({
+                email: { type: String, required: true, lowercase: true },
+                role: { type: String, enum: ['viewer', 'editor'], required: true }
+            }, { _id: false })],
+            default: []
+        },
         title: {
             type: String,
             required: true,

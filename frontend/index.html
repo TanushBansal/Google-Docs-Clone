@@ -9,6 +9,13 @@
 </head>
 
 <body>
+    <section id="login-screen" class="login-screen">
+        <div class="login-card"><h1>Welcome to My Docs</h1>
+        <p>Sign in to create documents and access documents shared with you.</p>
+        <div id="google-signin"></div><p id="login-message" role="status">Loading sign-in…</p></div>
+    </section>
+    <div id="workspace" hidden>
+
 
     <!-- Top-->
     <header class="topbar">
@@ -21,7 +28,9 @@
 
         <div class="top-actions">
             <span id="save-status">All changes saved</span>
-            <button id="share-btn">Share</button>
+            <span id="access-role"></span>
+            <span id="account-name"></span><button id="logout-btn">Log out</button>
+            <button id="retry-save">Save now</button><button id="share-btn">Share</button>
         </div>
     </header>
 
@@ -155,6 +164,17 @@
         <span>Editing mode</span>
     </footer>
 
+    </div>
+    <dialog id="share-dialog"><form id="share-form">
+        <h2>Share document</h2><p>Only people you add can access this document.</p>
+        <label>Email <input id="share-email" type="email" required maxlength="254"></label>
+        <label>Access <select id="share-role"><option value="viewer">Viewer</option><option value="editor">Editor</option></select></label>
+        <button type="submit">Save access</button>
+        <p id="share-message" role="status"></p><div id="permission-list"></div>
+        <button id="copy-link" type="button">Copy document link</button>
+        <button id="close-sharing" type="button">Done</button>
+    </form></dialog>
+    <script src="auth.js"></script>
     <script src="script.js"></script>
 
 </body>
