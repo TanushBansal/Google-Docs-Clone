@@ -36,12 +36,19 @@ async function startAuthentication() {
 document.getElementById('logout-btn').addEventListener('click', async () => {
     try {
         clearTimeout(saveTimer);
+
         await persistDocument(getActiveDocument());
-        await authRequest('logout', {method:'POST', body:'{}'});
-        localStorage.removeItem(ACTIVE_KEY);
-        localStorage.removeItem(STORAGE_KEY);
+
+        await authRequest('logout', {
+            method: 'POST',
+            body: '{}'
+        });
+
+        localStorage.removeItem("myDocsActiveDocument");
         location.href = '/';
-    } catch(error) { alert(error.message); }
+    } catch (error) {
+        alert(error.message);
+    }
 });
 let sharingDocumentId;
 async function showSharing() {
