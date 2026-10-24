@@ -69,6 +69,12 @@ let savedRange = null;
 let highlightMode = false;
 let currentTextColor = textColorInput?.value || "#000000";
 let currentHighlightColor = highlightInput?.value || "#ffff00";
+function updateHighlightButton() {
+    if (!highlightBtn) return;
+
+    highlightBtn.classList.toggle("active", highlightMode);
+    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
+}
 
 const fontSizes = {
     "2": "10px",
@@ -653,8 +659,7 @@ highlightBtn.addEventListener("click", function() {
     console.log("Highlight mode:", highlightMode);
 console.log("Button clicked!");
 
-    highlightBtn.classList.toggle("active", highlightMode);
-    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
+    updateHighlightButton();
 
     if (highlightMode) {
         highlightInput.click();
