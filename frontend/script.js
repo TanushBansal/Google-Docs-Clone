@@ -647,11 +647,11 @@ if (textColorBtn && textColorInput) {
     });
 }
 
+
 /* ======================================
    HIGHLIGHT
 ====================================== */
 
-// Open the color picker and remember the selected text.
 if (highlightBtn && highlightInput) {
     highlightBtn.addEventListener("mousedown", event => {
         event.preventDefault();
@@ -663,6 +663,7 @@ if (highlightBtn && highlightInput) {
 
         saveEditorSelection();
 
+        // Clicking the button toggles highlight mode.
         highlightMode = !highlightMode;
         updateHighlightButton();
 
@@ -671,7 +672,6 @@ if (highlightBtn && highlightInput) {
         }
     });
 
-    // Preview the selected color in the toolbar.
     highlightInput.addEventListener("input", () => {
         currentHighlightColor = highlightInput.value;
 
@@ -681,7 +681,6 @@ if (highlightBtn && highlightInput) {
         }
     });
 
-    // Apply the chosen color to the selected text.
     highlightInput.addEventListener("change", () => {
         currentHighlightColor = highlightInput.value;
 
@@ -690,11 +689,12 @@ if (highlightBtn && highlightInput) {
                 currentHighlightColor;
         }
 
+        if (!highlightMode) return;
+
         restoreEditorSelection();
         editor.focus();
 
         document.execCommand("styleWithCSS", false, true);
-
         document.execCommand(
             "hiliteColor",
             false,
@@ -704,7 +704,7 @@ if (highlightBtn && highlightInput) {
         markAsEdited();
         saveEditorSelection();
 
-        highlightMode = false;
+        // Keep the button active until clicked again.
         updateHighlightButton();
     });
 }
@@ -715,7 +715,6 @@ editor.addEventListener("beforeinput", event => {
     if (highlightMode || event.inputType !== "insertText") return;
 
     const selection = window.getSelection();
-
     if (!selection || !selection.rangeCount) return;
 
     const range = selection.getRangeAt(0);
@@ -723,9 +722,7 @@ editor.addEventListener("beforeinput", event => {
     if (
         !editor.contains(range.startContainer) ||
         !editor.contains(range.endContainer)
-    ) {
-        return;
-    }
+    ) return;
 
     let node = range.startContainer;
 
@@ -740,11 +737,8 @@ editor.addEventListener("beforeinput", event => {
     if (
         !highlightedElement ||
         !editor.contains(highlightedElement)
-    ) {
-        return;
-    }
+    ) return;
 
-    // Move the cursor outside the highlighted element.
     const textNode = document.createTextNode("");
 
     highlightedElement.parentNode.insertBefore(
@@ -753,7 +747,6 @@ editor.addEventListener("beforeinput", event => {
     );
 
     const newRange = document.createRange();
-
     newRange.setStart(textNode, 0);
     newRange.collapse(true);
 
@@ -762,6 +755,7 @@ editor.addEventListener("beforeinput", event => {
 
     saveEditorSelection();
 });
+
 
 /* ======================================
    UNDO AND REDO
