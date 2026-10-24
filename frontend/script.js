@@ -645,62 +645,78 @@ if (textColorBtn && textColorInput) {
    HIGHLIGHT
 ====================================== */
 
-function updateHighlightButton() {
-    if (!highlightBtn) return;
+highlightBtn.addEventListener("click", function() {
+    saveEditorSelection();
+    restoreEditorSelection();
+
+    highlightMode = !highlightMode;
+    console.log("Highlight mode:", highlightMode);
+console.log("Button clicked!");
 
     highlightBtn.classList.toggle("active", highlightMode);
     highlightBtn.setAttribute("aria-pressed", String(highlightMode));
-}
 
-if (highlightBtn && highlightInput) {
-    highlightBtn.addEventListener("mousedown", event => {
-        event.preventDefault();
+    if (highlightMode) {
+        highlightInput.click();
+        return;
+    }
+
+    // Move the cursor to a position with no visible highlight.
+    const selection = window.getSelection();
+
+    if (!selection || !selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0).cloneRange();
+    range.collapse(false);
+
+    let node = range.startContainer;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        node = node.parentElement;
+    }
+
+    const highlightedElement = node?.closest?.(
+        'mark, span[style*="background-color"], font[style*="background-color"]'
+    );
+
+    if (!highlightedElement || !editor.contains(highlightedElement)) {
         saveEditorSelection();
-    });
+        return;
+    }
 
-    highlightBtn.addEventListener("click", () => {
-        if (editor.contentEditable !== "true") return;
+    // Use the editor's white page background to mask
+    // the highlight only for newly typed text.
+    const marker = document.createElement("span");
+    marker.style.backgroundColor = "#ffffff";
 
-        saveEditorSelection();
-        restoreEditorSelection();
+    const cursorText = document.createTextNode("\u200B");
+    marker.appendChild(cursorText);
 
-        highlightMode = !highlightMode;
-        updateHighlightButton();
+    range.insertNode(marker);
 
-        if (highlightMode) {
-            highlightInput.click();
-        }
-    });
+    const newRange = document.createRange();
+    newRange.setStart(cursorText, 1);
+    newRange.collapse(true);
 
-    highlightInput.addEventListener("input", () => {
-        currentHighlightColor = highlightInput.value;
+    selection.removeAllRanges();
+    selection.addRange(newRange);
 
-        if (highlightIndicator) {
-            highlightIndicator.style.backgroundColor = currentHighlightColor;
-        }
-    });
+    saveEditorSelection();
+    markAsEdited();
+});
 
-    highlightInput.addEventListener("change", () => {
-        if (!highlightMode) return;
+editor.addEventListener("beforeinput", function(event) {
+    if (highlightMode) return;
 
-        restoreEditorSelection();
-
-        document.execCommand("styleWithCSS", false, true);
-        document.execCommand("hiliteColor", false, currentHighlightColor);
-
-        markAsEdited();
-        saveEditorSelection();
-    });
-}
-
-// Avoid inheriting the highlight while typing outside highlight mode.
-editor.addEventListener("beforeinput", event => {
-    if (highlightMode || event.inputType !== "insertText") return;
+    // Do not interfere with deletions, formatting, or other edits.
+    if (event.inputType !== "insertText") return;
 
     const selection = window.getSelection();
+
     if (!selection || !selection.rangeCount) return;
 
     const range = selection.getRangeAt(0);
+
     if (!editor.contains(range.startContainer)) return;
 
     let node = range.startContainer;
@@ -714,9 +730,9 @@ editor.addEventListener("beforeinput", event => {
     );
 
     if (highlightedElement && editor.contains(highlightedElement)) {
+        // Remove the inherited highlight from the typing position only.
         const parent = highlightedElement.parentNode;
         const text = document.createTextNode("");
-
         parent.insertBefore(text, highlightedElement.nextSibling);
 
         const newRange = document.createRange();
