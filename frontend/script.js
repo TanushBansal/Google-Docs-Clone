@@ -651,13 +651,6 @@ if (textColorBtn && textColorInput) {
    HIGHLIGHT
 ====================================== */
 
-
-/* ======================================
-   HIGHLIGHT
-====================================== */
-
-
-
 // Open the color picker and remember the selected text.
 if (highlightBtn && highlightInput) {
     highlightBtn.addEventListener("mousedown", event => {
@@ -668,7 +661,7 @@ if (highlightBtn && highlightInput) {
     highlightBtn.addEventListener("click", () => {
         if (editor.contentEditable !== "true") return;
 
-        restoreEditorSelection();
+        saveEditorSelection();
 
         highlightMode = !highlightMode;
         updateHighlightButton();
@@ -690,30 +683,30 @@ if (highlightBtn && highlightInput) {
 
     // Apply the chosen color to the selected text.
     highlightInput.addEventListener("change", () => {
-    currentHighlightColor = highlightInput.value;
+        currentHighlightColor = highlightInput.value;
 
-    if (highlightIndicator) {
-        highlightIndicator.style.backgroundColor =
-            currentHighlightColor;
-    }
+        if (highlightIndicator) {
+            highlightIndicator.style.backgroundColor =
+                currentHighlightColor;
+        }
 
-    restoreEditorSelection();
-    editor.focus();
+        restoreEditorSelection();
+        editor.focus();
 
-    document.execCommand("styleWithCSS", false, true);
+        document.execCommand("styleWithCSS", false, true);
 
-    document.execCommand(
-        "hiliteColor",
-        false,
-        currentHighlightColor
-    );
+        document.execCommand(
+            "hiliteColor",
+            false,
+            currentHighlightColor
+        );
 
-    markAsEdited();
-    saveEditorSelection();
+        markAsEdited();
+        saveEditorSelection();
 
-    highlightMode = false;
-    updateHighlightButton();
-});
+        highlightMode = false;
+        updateHighlightButton();
+    });
 }
 
 // Prevent newly typed text from inheriting an old highlight
@@ -744,18 +737,23 @@ editor.addEventListener("beforeinput", event => {
         'mark, span[style*="background-color"], font[style*="background-color"]'
     );
 
-    if (!highlightedElement || !editor.contains(highlightedElement)) {
+    if (
+        !highlightedElement ||
+        !editor.contains(highlightedElement)
+    ) {
         return;
     }
 
     // Move the cursor outside the highlighted element.
     const textNode = document.createTextNode("");
+
     highlightedElement.parentNode.insertBefore(
         textNode,
         highlightedElement.nextSibling
     );
 
     const newRange = document.createRange();
+
     newRange.setStart(textNode, 0);
     newRange.collapse(true);
 
@@ -764,7 +762,6 @@ editor.addEventListener("beforeinput", event => {
 
     saveEditorSelection();
 });
-
 
 /* ======================================
    UNDO AND REDO
