@@ -442,6 +442,12 @@ body {
     overflow-wrap: anywhere;
     text-align: left;
 }
+#editor .tiptap {
+    background-color: #ffffff;
+    color: #202124;
+    min-height: 850px;
+    outline: none;
+}
 
 
 

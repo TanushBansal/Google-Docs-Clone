@@ -59,8 +59,7 @@ if (editorElement) {
     FontFamily,
     TextAlign.configure({
         types: ['heading', 'paragraph'],
-    }),
-    Underline,
+    })
 ],
         content: '',
         editorProps: {

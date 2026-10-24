@@ -259,6 +259,7 @@ function renderDocumentList() {
     });
 }
 
+
 /* ======================================
    OPEN DOCUMENT
 ====================================== */
@@ -273,73 +274,87 @@ async function openDocument(id) {
         return;
     }
 
+    // Save the currently active document before switching.
     clearTimeout(saveTimer);
 
+    const previousDocument = getActiveDocument();
+
     try {
-        await persistDocument(getActiveDocument());
+        if (previousDocument) {
+            await persistDocument(previousDocument);
+        }
     } catch (error) {
         console.error("Could not save the previous document:", error);
+        saveStatus.textContent = "Could not save the previous document";
         return;
     }
-
-    const doc = documents.find(item => item.id === id);
-    if (!doc) return;
 
     try {
-        Object.assign(
-            doc,
-            await apiRequest("/" + encodeURIComponent(doc.id))
+        // Fetch the selected document using its own ID.
+        const doc = await apiRequest("/" + encodeURIComponent(id));
+
+        // Replace the cached version, rather than mixing old and new fields.
+        const index = documents.findIndex(item => item.id === id);
+
+        if (index === -1) {
+            documents.unshift(doc);
+        } else {
+            documents[index] = doc;
+        }
+
+        activeDocumentId = doc.id;
+
+        const canEdit = doc.role !== "viewer";
+        tiptap.setEditable(canEdit);
+
+        titleInput.disabled = !canEdit;
+
+        document.querySelectorAll(
+            ".toolbar button, .toolbar select, .toolbar input"
+        ).forEach(control => {
+            control.disabled = !canEdit;
+        });
+
+        if (shareButton) {
+            shareButton.disabled = doc.role !== "owner";
+        }
+
+        const roleLabel = document.getElementById("access-role");
+        if (roleLabel) {
+            roleLabel.textContent = doc.role || "owner";
+        }
+
+        history.replaceState(
+            null,
+            "",
+            "?doc=" + encodeURIComponent(doc.id)
         );
+
+        titleInput.value = doc.title || "Untitled document";
+
+        highlightMode = false;
+        updateHighlightButton();
+
+        // Load this document's content into Tiptap.
+        tiptap.commands.setContent(doc.content || "", {
+            emitUpdate: false
+        });
+
+        saveAllDocuments();
+        renderDocumentList();
+        updateWordCount();
+        updateToolbarState();
+
+        saveStatus.textContent = dirtyDocuments.has(doc.id)
+            ? "Unsaved changes"
+            : "All changes saved";
+
     } catch (error) {
-        saveStatus.textContent = error.message;
-        return;
+        console.error("Could not open document:", error);
+        saveStatus.textContent = "Could not open document";
     }
-
-    activeDocumentId = doc.id;
-
-    const canEdit = doc.role !== "viewer";
-    tiptap.setEditable(canEdit);
-
-    titleInput.disabled = !canEdit;
-
-    document.querySelectorAll(
-        ".toolbar button, .toolbar select, .toolbar input"
-    ).forEach(control => {
-        control.disabled = !canEdit;
-    });
-
-    if (shareButton) {
-        shareButton.disabled = doc.role !== "owner";
-    }
-
-    const roleLabel = document.getElementById("access-role");
-    if (roleLabel) roleLabel.textContent = doc.role || "owner";
-
-    history.replaceState(
-        null,
-        "",
-        "?doc=" + encodeURIComponent(doc.id)
-    );
-
-    titleInput.value = doc.title || "Untitled document";
-
-    // Reset the temporary highlight mode when switching documents.
-    highlightMode = false;
-    updateHighlightButton();
-
-    tiptap.commands.setContent(doc.content || "", {
-        emitUpdate: false
-    });
-
-    saveAllDocuments();
-    renderDocumentList();
-    updateWordCount();
-    updateToolbarState();
-
-    saveStatus.textContent = dirtyDocuments.has(doc.id)
-        ? "Unsaved changes"
-        : "All changes saved";
 }
+
 
 /* ======================================
    CREATE DOCUMENT
@@ -348,8 +363,15 @@ async function openDocument(id) {
 async function newDocument() {
     try {
         clearTimeout(saveTimer);
-        await persistDocument(getActiveDocument());
 
+        // Save the existing document before creating another.
+        const previousDocument = getActiveDocument();
+
+        if (previousDocument) {
+            await persistDocument(previousDocument);
+        }
+
+        // Ask the backend to create a genuinely new document.
         const doc = await apiRequest("", {
             method: "POST",
             body: JSON.stringify({
@@ -358,16 +380,22 @@ async function newDocument() {
             })
         });
 
-        documents.unshift(doc);
-        activeDocumentId = doc.id;
+        // The backend must return the new document's unique ID.
+        if (!doc || !doc.id) {
+            throw new Error(
+                "The server did not return a document ID."
+            );
+        }
 
-        saveAllDocuments();
-        renderDocumentList();
+        documents.unshift(doc);
+
+        // openDocument handles setting the active ID and editor content.
         await openDocument(doc.id);
+
     } catch (error) {
         console.error("Could not create document:", error);
         saveStatus.textContent = "Create failed";
-        alert("Could not create the document. Check the backend.");
+        alert("Could not create the document: " + error.message);
     }
 }
 
