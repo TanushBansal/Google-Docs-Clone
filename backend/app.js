@@ -19,7 +19,22 @@ function createApp({connection = mongoose.connection, verifyToken} = {}) {
     app.use(async (req,res,next) => {
         res.setHeader('X-Content-Type-Options','nosniff');
         if(req.path.startsWith('/api/')) res.setHeader('Cache-Control','no-store');
-        if(!['GET','HEAD','OPTIONS'].includes(req.method) && (req.headers.origin !== (process.env.APP_ORIGIN || `http://localhost:${process.env.PORT || 3000}`) || req.headers['x-requested-with'] !== 'DocsApp')) return res.status(403).json({message:'Invalid request origin'});
+        
+const allowedOrigins = new Set([
+    process.env.APP_ORIGIN || `http://localhost:${process.env.PORT || 3000}`,
+    'http://localhost:5173'
+]);
+
+if (
+    !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+    (
+        !allowedOrigins.has(req.headers.origin) ||
+        req.headers['x-requested-with'] !== 'DocsApp'
+    )
+) {
+    return res.status(403).json({ message: 'Invalid request origin' });
+}
+
         const token = /(?:^|;\s*)docs_session=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1];
         req.session = token ? await Session.findOne({_id:hash(token),expires:{$gt:new Date()}}) : null;
         req.user = req.session?.user ? await User.findById(req.session.user) : null;
@@ -53,7 +68,11 @@ function createApp({connection = mongoose.connection, verifyToken} = {}) {
         cookie(res,'',0);res.json({ok:true});
     });
     app.use('/api/documents',(req,res,next)=>req.user?next():res.status(401).json({message:'Please sign in'}),documentRoutes(Documents));
-    app.use(express.static(path.join(__dirname,'../frontend')));
+    const frontendPath = process.env.NODE_ENV === 'production'
+    ? path.join(__dirname, '../dist')
+    : path.join(__dirname, '../frontend');
+
+app.use(express.static(frontendPath));
     app.use((error,req,res,next)=>{
         console.error(error.message);
         const status=[400,413].includes(error.status)?error.status:500;

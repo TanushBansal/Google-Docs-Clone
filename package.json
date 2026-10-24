@@ -1,0 +1,33 @@
+{
+  "name": "google-docs-clone",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TanushBansal/Google-Docs-Clone.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/TanushBansal/Google-Docs-Clone/issues"
+  },
+  "homepage": "https://github.com/TanushBansal/Google-Docs-Clone#readme",
+  "devDependencies": {
+    "vite": "^8.3.5"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/extension-collaboration": "^3.32.0",
+    "@tiptap/extension-collaboration-cursor": "^3.0.0",
+    "@tiptap/starter-kit": "^3.32.0",
+    "yjs": "^13.6.33"
+  }
+}
