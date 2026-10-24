@@ -1,8 +1,10 @@
 
- // ======================================
-// GOOGLE DOCS CLONE - DOCUMENT MANAGER
-// ======================================
+/* ======================================
+   GOOGLE DOCS CLONE - DOCUMENT MANAGER
+====================================== */
+
 const API_URL = "/api/documents";
+const ACTIVE_KEY = "myDocsActiveDocument";
 
 async function apiRequest(endpoint = "", options = {}) {
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -17,174 +19,206 @@ async function apiRequest(endpoint = "", options = {}) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(
-            data?.message || `API error: ${response.status}`
-        );
+        throw new Error(data?.message || `API error: ${response.status}`);
     }
 
     return data;
 }
 
-const editor = document.getElementById("editor");
+/* ======================================
+   DOM ELEMENTS
+====================================== */
+
 const titleInput = document.getElementById("document-title");
 const saveStatus = document.getElementById("save-status");
 const wordCount = document.getElementById("word-count");
-
 const blockFormat = document.getElementById("block-format");
 const fontSize = document.getElementById("font-size");
 const fontFamily = document.getElementById("font-family");
 
 const undoButton = document.getElementById("undo-btn");
 const redoButton = document.getElementById("redo-btn");
-const clearButton = document.getElementById("clear-format");
 const shareButton = document.getElementById("share-btn");
+const newDocumentButton = document.getElementById("new-document-btn");
+const documentList = document.getElementById("document-list");
 
-const newDocumentButton =
-    document.getElementById("new-document-btn");
+const textColorBtn = document.getElementById("text-color-btn");
+const textColorInput = document.getElementById("text-color");
+const textColorIndicator = document.getElementById("text-color-indicator");
 
-const documentList =
-    document.getElementById("document-list");
+const highlightBtn = document.getElementById("highlight-btn");
+const highlightInput = document.getElementById("highlight-color");
+const highlightIndicator = document.getElementById("highlight-indicator");
 
-const STORAGE_KEY = "myDocsDocuments";
-const ACTIVE_KEY = "myDocsActiveDocument";
+const fontSizes = {
+    "2": "10px",
+    "3": "12px",
+    "4": "14px",
+    "5": "18px",
+    "6": "24px",
+    "7": "36px"
+};
 
-// Current application state
+/* ======================================
+   APPLICATION STATE
+====================================== */
+
 let documents = [];
 let activeDocumentId = null;
 let saveTimer = null;
 let pendingSave = Promise.resolve();
-let dirtyDocuments = new Set();
+const dirtyDocuments = new Set();
 
+let highlightMode = false;
+let currentHighlightColor = highlightInput?.value || "#ffff00";
+let currentTextColor = textColorInput?.value || "#000000";
 
-// ======================================
-// CREATE A NEW DOCUMENT OBJECT
-// ======================================
-
-function createDocument(title = "Untitled document") {
-    return {
-        id: crypto.randomUUID(),
-        title: title,
-        content:"",
-        updatedAt: new Date().toISOString()
-    };
+function getTiptapEditor() {
+    return window.tiptapEditor || null;
 }
 
+/* ======================================
+   DOCUMENT HELPERS
+====================================== */
 
-// ======================================
-// LOAD SAVED DOCUMENTS
-// ======================================
+function getActiveDocument() {
+    return documents.find(doc => doc.id === activeDocumentId);
+}
+
+function saveAllDocuments() {
+    localStorage.setItem(ACTIVE_KEY, activeDocumentId || "");
+}
+
+function updateWordCount() {
+    const tiptap = getTiptapEditor();
+    if (!wordCount) return;
+
+    const text = tiptap ? tiptap.getText().trim() : "";
+    const count = text ? text.split(/\s+/).length : 0;
+
+    wordCount.textContent = `Words: ${count}`;
+}
+
+/* ======================================
+   AUTOSAVE
+====================================== */
+
+function markAsEdited() {
+    const doc = getActiveDocument();
+    const tiptap = getTiptapEditor();
+
+    if (!doc || !tiptap || doc.role === "viewer") return;
+
+    doc.title = titleInput.value.trim() || "Untitled document";
+    doc.content = tiptap.getHTML();
+    doc.updatedAt = new Date().toISOString();
+
+    dirtyDocuments.add(doc.id);
+    saveStatus.textContent = "Saving...";
+
+    updateWordCount();
+    renderDocumentList();
+
+    clearTimeout(saveTimer);
+
+    saveTimer = setTimeout(() => {
+        persistDocument(doc).catch(error => {
+            console.error("Autosave failed:", error);
+        });
+    }, 500);
+}
+
+function persistDocument(doc) {
+    if (!doc || doc.role === "viewer" || !dirtyDocuments.has(doc.id)) {
+        return pendingSave;
+    }
+
+    const snapshot = {
+        title: doc.title,
+        content: doc.content
+    };
+
+    const task = pendingSave.catch(() => {}).then(async () => {
+        try {
+            await apiRequest("/" + encodeURIComponent(doc.id), {
+                method: "PUT",
+                body: JSON.stringify(snapshot)
+            });
+
+            if (
+                doc.title === snapshot.title &&
+                doc.content === snapshot.content
+            ) {
+                dirtyDocuments.delete(doc.id);
+            }
+
+            if (activeDocumentId === doc.id) {
+                saveStatus.textContent = dirtyDocuments.has(doc.id)
+                    ? "Saving..."
+                    : "All changes saved";
+            }
+        } catch (error) {
+            if (activeDocumentId === doc.id) {
+                saveStatus.textContent =
+                    "Save failed — keep this tab open and retry";
+            }
+
+            throw error;
+        }
+    });
+
+    pendingSave = task;
+    return task;
+}
+
+/* ======================================
+   LOAD DOCUMENTS
+====================================== */
 
 async function loadDocuments() {
     try {
-        saveStatus.textContent = "Loading documents...";
+        await window.tiptapEditorReady;
 
+        if (!getTiptapEditor()) {
+            throw new Error("Tiptap could not initialize.");
+        }
+
+        saveStatus.textContent = "Loading documents...";
         documents = await apiRequest();
 
-        const savedActiveId = new URLSearchParams(location.search).get("doc") || localStorage.getItem(ACTIVE_KEY);
-
-        const activeExists = documents.some(function(doc) {
-            return doc.id === savedActiveId;
-        });
+        const urlId = new URLSearchParams(location.search).get("doc");
+        const savedId = urlId || localStorage.getItem(ACTIVE_KEY);
 
         if (documents.length === 0) {
             await newDocument();
             return;
         }
 
-        activeDocumentId = activeExists
-            ? savedActiveId
+        activeDocumentId = documents.some(doc => doc.id === savedId)
+            ? savedId
             : documents[0].id;
 
         renderDocumentList();
-        openDocument(activeDocumentId);
-
+        await openDocument(activeDocumentId);
     } catch (error) {
         console.error("Could not load documents:", error);
-        saveStatus.textContent = "Could not connect to backend";
-        alert("Could not load documents. Check that your backend is running.");
+        saveStatus.textContent = "Could not load documents";
+        alert("Could not load documents. Check the backend and console.");
     }
 }
 
+window.loadDocuments = loadDocuments;
 
-// ======================================
-// SAVE ALL DOCUMENTS TO BROWSER STORAGE
-// ======================================
-
-function saveAllDocuments() {
-    localStorage.setItem(ACTIVE_KEY, activeDocumentId || '');
-    return true;
-}
-
-
-// ======================================
-// FIND THE CURRENT DOCUMENT
-// ======================================
-
-function getActiveDocument() {
-    return documents.find(function(doc) {
-        return doc.id === activeDocumentId;
-    });
-}
-
-
-// ======================================
-// UPDATE WORD COUNT
-// ======================================
-
-function updateWordCount() {
-    const text = editor.innerText.trim();
-
-    const words = text
-        ? text.split(/\s+/).length
-        : 0;
-
-    wordCount.textContent = "Words: " + words;
-}
-
-
-// ======================================
-// SCHEDULE AUTOSAVE
-// ======================================
-
-function markAsEdited() {
-    const doc = getActiveDocument();
-    if (!doc || doc.role === 'viewer') return;
-    doc.title = titleInput.value.trim() || 'Untitled document';
-    doc.content = editor.innerHTML;
-    dirtyDocuments.add(doc.id);
-    saveStatus.textContent = 'Saving...';
-    updateWordCount();
-    renderDocumentList();
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => persistDocument(doc).catch(() => {}), 500);
-}
-
-function persistDocument(doc) {
-    if (!doc || doc.role === 'viewer' || !dirtyDocuments.has(doc.id)) return pendingSave;
-    const snapshot = {title: doc.title, content: doc.content};
-    const task = pendingSave.catch(() => {}).then(async () => {
-        try {
-            await apiRequest('/' + doc.id, {method:'PUT', body:JSON.stringify(snapshot)});
-            if (doc.title === snapshot.title && doc.content === snapshot.content) dirtyDocuments.delete(doc.id);
-            if(activeDocumentId === doc.id) saveStatus.textContent = dirtyDocuments.has(doc.id) ? 'Saving...' : 'All changes saved';
-        } catch(error) {
-            saveStatus.textContent = 'Save failed — keep this tab open and retry';
-            throw error;
-        }
-    });
-    pendingSave = task;
-    return task;
-}
-
-
-// ======================================
-// RENDER THE SIDEBAR DOCUMENT LIST
-// ======================================
+/* ======================================
+   SIDEBAR
+====================================== */
 
 function renderDocumentList() {
+    if (!documentList) return;
+
     documentList.innerHTML = "";
 
-    documents.forEach(function(doc) {
+    documents.forEach(doc => {
         const item = document.createElement("div");
         item.className = "document-item";
 
@@ -198,84 +232,125 @@ function renderDocumentList() {
         const name = document.createElement("span");
         name.className = "document-name";
         name.textContent = doc.title || "Untitled document";
-        name.title = doc.title || "Untitled document";
+        name.title = name.textContent;
 
-        const deleteButton = document.createElement("button");
-        deleteButton.className = "delete-document-btn";
-        deleteButton.textContent = "×";
-        deleteButton.title = "Delete document";
-        deleteButton.setAttribute("aria-label", "Delete document");
+        item.append(icon, name);
 
-        item.appendChild(icon);
-        item.appendChild(name);
-        if (doc.role === 'owner') item.appendChild(deleteButton);
+        if (doc.role === "owner") {
+            const deleteButton = document.createElement("button");
+            deleteButton.className = "delete-document-btn";
+            deleteButton.textContent = "×";
+            deleteButton.title = "Delete document";
+            deleteButton.setAttribute("aria-label", "Delete document");
 
-        item.addEventListener("click", function() {
-            openDocument(doc.id);
-        });
+            deleteButton.addEventListener("click", event => {
+                event.stopPropagation();
+                deleteDocument(doc.id);
+            });
 
-        deleteButton.addEventListener("click", function(event) {
-            event.stopPropagation();
-            deleteDocument(doc.id);
+            item.appendChild(deleteButton);
+        }
+
+        item.addEventListener("click", () => {
+            openDocument(doc.id).catch(console.error);
         });
 
         documentList.appendChild(item);
     });
 }
 
-
-// ======================================
-// OPEN AN EXISTING DOCUMENT
-// ======================================
+/* ======================================
+   OPEN DOCUMENT
+====================================== */
 
 async function openDocument(id) {
-    clearTimeout(saveTimer);
-    try { await persistDocument(getActiveDocument()); } catch { return; }
+    await window.tiptapEditorReady;
 
-    const doc = documents.find(function(item) {
-        return item.id === id;
-    });
+    const tiptap = getTiptapEditor();
 
-    if (!doc) {
+    if (!tiptap) {
+        saveStatus.textContent = "The editor could not initialize.";
         return;
     }
 
-    try { Object.assign(doc, await apiRequest('/' + doc.id)); }
-    catch(error) { saveStatus.textContent = error.message; return; }
-    activeDocumentId = doc.id;
-    savedRange = null;
-    const canEdit = doc.role !== 'viewer';
-    editor.contentEditable = String(canEdit);
-    titleInput.disabled = !canEdit;
-    document.querySelectorAll('.toolbar button, .toolbar select, .toolbar input').forEach(control => control.disabled = !canEdit);
-    shareButton.disabled = doc.role !== 'owner';
-    document.getElementById('access-role').textContent = doc.role;
-    history.replaceState(null, '', '?doc=' + encodeURIComponent(doc.id));
+    clearTimeout(saveTimer);
 
-    titleInput.value = doc.title;
-    editor.innerHTML = doc.content;
+    try {
+        await persistDocument(getActiveDocument());
+    } catch (error) {
+        console.error("Could not save the previous document:", error);
+        return;
+    }
+
+    const doc = documents.find(item => item.id === id);
+    if (!doc) return;
+
+    try {
+        Object.assign(
+            doc,
+            await apiRequest("/" + encodeURIComponent(doc.id))
+        );
+    } catch (error) {
+        saveStatus.textContent = error.message;
+        return;
+    }
+
+    activeDocumentId = doc.id;
+
+    const canEdit = doc.role !== "viewer";
+    tiptap.setEditable(canEdit);
+
+    titleInput.disabled = !canEdit;
+
+    document.querySelectorAll(
+        ".toolbar button, .toolbar select, .toolbar input"
+    ).forEach(control => {
+        control.disabled = !canEdit;
+    });
+
+    if (shareButton) {
+        shareButton.disabled = doc.role !== "owner";
+    }
+
+    const roleLabel = document.getElementById("access-role");
+    if (roleLabel) roleLabel.textContent = doc.role || "owner";
+
+    history.replaceState(
+        null,
+        "",
+        "?doc=" + encodeURIComponent(doc.id)
+    );
+
+    titleInput.value = doc.title || "Untitled document";
+
+    // Reset the temporary highlight mode when switching documents.
+    highlightMode = false;
+    updateHighlightButton();
+
+    tiptap.commands.setContent(doc.content || "", {
+        emitUpdate: false
+    });
 
     saveAllDocuments();
     renderDocumentList();
     updateWordCount();
+    updateToolbarState();
 
-    saveStatus.textContent = "All changes saved";
+    saveStatus.textContent = dirtyDocuments.has(doc.id)
+        ? "Unsaved changes"
+        : "All changes saved";
 }
 
-
-// ======================================
-// CREATE A DOCUMENT
-// ======================================
+/* ======================================
+   CREATE DOCUMENT
+====================================== */
 
 async function newDocument() {
     try {
         clearTimeout(saveTimer);
+        await persistDocument(getActiveDocument());
 
-        const currentDoc = getActiveDocument();
-
-        await persistDocument(currentDoc);
-
-        const newDoc = await apiRequest("", {
+        const doc = await apiRequest("", {
             method: "POST",
             body: JSON.stringify({
                 title: "Untitled document",
@@ -283,14 +358,12 @@ async function newDocument() {
             })
         });
 
-        documents.unshift(newDoc);
-        activeDocumentId = newDoc.id;
+        documents.unshift(doc);
+        activeDocumentId = doc.id;
 
-        localStorage.setItem(ACTIVE_KEY, activeDocumentId);
-
+        saveAllDocuments();
         renderDocumentList();
-        await openDocument(newDoc.id);
-
+        await openDocument(doc.id);
     } catch (error) {
         console.error("Could not create document:", error);
         saveStatus.textContent = "Create failed";
@@ -298,43 +371,38 @@ async function newDocument() {
     }
 }
 
-
-// ======================================
-// DELETE A DOCUMENT
-// ======================================
+/* ======================================
+   DELETE DOCUMENT
+====================================== */
 
 async function deleteDocument(id) {
-    const docToDelete = documents.find(function(doc) {
-        return doc.id === id;
-    });
+    const doc = documents.find(item => item.id === id);
 
-    if (!docToDelete) {
-        return;
-    }
+    if (!doc || doc.role !== "owner") return;
 
-    const confirmed = confirm(
-        "Are you sure you want to delete this document?"
-    );
-
-    if (!confirmed) {
+    if (!confirm("Are you sure you want to delete this document?")) {
         return;
     }
 
     try {
-        await apiRequest("/" + id, {
+        if (activeDocumentId === id) {
+            clearTimeout(saveTimer);
+            await persistDocument(doc);
+        }
+
+        await apiRequest("/" + encodeURIComponent(id), {
             method: "DELETE"
         });
 
-        documents = documents.filter(function(doc) {
-            return doc.id !== id;
-        });
+        dirtyDocuments.delete(id);
+        documents = documents.filter(item => item.id !== id);
 
         if (activeDocumentId === id) {
-            if (documents.length > 0) {
+            if (documents.length) {
                 activeDocumentId = documents[0].id;
-                localStorage.setItem(ACTIVE_KEY, activeDocumentId);
+                saveAllDocuments();
                 renderDocumentList();
-                openDocument(activeDocumentId);
+                await openDocument(activeDocumentId);
             } else {
                 activeDocumentId = null;
                 await newDocument();
@@ -348,474 +416,407 @@ async function deleteDocument(id) {
     } catch (error) {
         console.error("Delete failed:", error);
         saveStatus.textContent = "Delete failed";
-        alert("Could not delete the document. Check the backend.");
+        alert("Could not delete the document.");
     }
 }
 
+/* ======================================
+   FORMATTING TOOLBAR
+====================================== */
 
-// ======================================
-// FORMATTING CONTROLS
-// ======================================
+function runTiptapCommand(callback) {
+    const tiptap = getTiptapEditor();
 
-// Existing toolbar buttons: bold, italic, underline, alignment, etc.
-document.querySelectorAll("[data-command]").forEach(function(button) {
-    button.addEventListener("mousedown", function(event) {
+    if (!tiptap || !tiptap.isEditable) return;
+
+    callback(tiptap);
+}
+
+function updateToolbarState() {
+    const tiptap = getTiptapEditor();
+    if (!tiptap) return;
+
+    document.querySelectorAll("[data-command]").forEach(button => {
+        const command = button.dataset.command;
+        let active = false;
+
+        if (["bold", "italic", "underline"].includes(command)) {
+            active = tiptap.isActive(command);
+        } else if (command === "insertUnorderedList") {
+            active = tiptap.isActive("bulletList");
+        } else if (command === "insertOrderedList") {
+            active = tiptap.isActive("orderedList");
+        } else if (command === "justifyLeft") {
+            active = tiptap.isActive({ textAlign: "left" });
+        } else if (command === "justifyCenter") {
+            active = tiptap.isActive({ textAlign: "center" });
+        } else if (command === "justifyRight") {
+            active = tiptap.isActive({ textAlign: "right" });
+        }
+
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+    });
+
+    if (blockFormat) {
+        if (tiptap.isActive("heading", { level: 1 })) {
+            blockFormat.value = "h1";
+        } else if (tiptap.isActive("heading", { level: 2 })) {
+            blockFormat.value = "h2";
+        } else if (tiptap.isActive("heading", { level: 3 })) {
+            blockFormat.value = "h3";
+        } else {
+            blockFormat.value = "p";
+        }
+    }
+
+    const textStyle = tiptap.getAttributes("textStyle");
+
+    if (fontSize) {
+        const entry = Object.entries(fontSizes).find(
+            ([, size]) => size === textStyle.fontSize
+        );
+
+        fontSize.value = entry ? entry[0] : "";
+    }
+
+    if (fontFamily && textStyle.fontFamily) {
+        const exists = Array.from(fontFamily.options).some(
+            option => option.value === textStyle.fontFamily
+        );
+
+        if (exists) fontFamily.value = textStyle.fontFamily;
+    }
+
+    if (highlightBtn) {
+        highlightBtn.classList.toggle(
+            "active",
+            highlightMode || tiptap.isActive("highlight")
+        );
+
+        highlightBtn.setAttribute(
+            "aria-pressed",
+            String(highlightMode || tiptap.isActive("highlight"))
+        );
+    }
+}
+
+window.handleTiptapSelectionUpdate = updateToolbarState;
+window.handleTiptapUpdate = markAsEdited;
+
+// Standard toolbar commands
+document.querySelectorAll("[data-command]").forEach(button => {
+    button.addEventListener("mousedown", event => event.preventDefault());
+
+    button.addEventListener("click", () => {
+        runTiptapCommand(tiptap => {
+            const chain = tiptap.chain().focus();
+
+            switch (button.dataset.command) {
+                case "bold":
+                    chain.toggleBold().run();
+                    break;
+                case "italic":
+                    chain.toggleItalic().run();
+                    break;
+                case "underline":
+                    chain.toggleUnderline().run();
+                    break;
+                case "insertUnorderedList":
+                    chain.toggleBulletList().run();
+                    break;
+                case "insertOrderedList":
+                    chain.toggleOrderedList().run();
+                    break;
+                case "justifyLeft":
+                    chain.setTextAlign("left").run();
+                    break;
+                case "justifyCenter":
+                    chain.setTextAlign("center").run();
+                    break;
+                case "justifyRight":
+                    chain.setTextAlign("right").run();
+                    break;
+            }
+        });
+
+        updateToolbarState();
+    });
+});
+
+// Block format dropdown
+if (blockFormat) {
+    blockFormat.addEventListener("mousedown", event => event.preventDefault());
+
+    blockFormat.addEventListener("change", () => {
+        runTiptapCommand(tiptap => {
+            if (blockFormat.value === "p") {
+                tiptap.chain().focus().setParagraph().run();
+            } else {
+                const level = Number(blockFormat.value.slice(1));
+
+                if ([1, 2, 3].includes(level)) {
+                    tiptap.chain().focus().setHeading({ level }).run();
+                }
+            }
+        });
+
+        updateToolbarState();
+    });
+}
+
+// Font family
+if (fontFamily) {
+    fontFamily.addEventListener("mousedown", event => event.preventDefault());
+
+    fontFamily.addEventListener("change", () => {
+        runTiptapCommand(tiptap => {
+            tiptap.chain().focus().setFontFamily(fontFamily.value).run();
+        });
+
+        updateToolbarState();
+    });
+}
+
+// Font size (requires the custom FontSize extension in main.js)
+if (fontSize) {
+    fontSize.addEventListener("mousedown", event => event.preventDefault());
+
+    fontSize.addEventListener("change", () => {
+        const size = fontSizes[fontSize.value];
+        if (!size) return;
+
+        runTiptapCommand(tiptap => {
+            tiptap.chain()
+                .focus()
+                .setMark("textStyle", { fontSize: size })
+                .run();
+        });
+
+        updateToolbarState();
+    });
+}
+
+/* ======================================
+   TEXT COLOUR
+====================================== */
+
+if (textColorBtn && textColorInput) {
+    textColorBtn.addEventListener("mousedown", event => {
         event.preventDefault();
     });
 
-    button.addEventListener("click", function() {
-        editor.focus();
-
-        document.execCommand(
-            button.dataset.command,
-            false,
-            null
-        );
-
-        markAsEdited();
+    textColorBtn.addEventListener("click", () => {
+        textColorInput.click();
     });
-});
 
+    textColorInput.addEventListener("input", () => {
+        currentTextColor = textColorInput.value;
 
-// ======================================
-// SAVE AND RESTORE TEXT SELECTION
-// ======================================
+        if (textColorIndicator) {
+            textColorIndicator.style.backgroundColor = currentTextColor;
+        }
+    });
 
-let savedRange = null;
+    textColorInput.addEventListener("change", () => {
+        runTiptapCommand(tiptap => {
+            tiptap.chain().focus().setColor(currentTextColor).run();
+        });
 
-function saveEditorSelection() {
-    const selection = window.getSelection();
-
-    if (
-        selection &&
-        selection.rangeCount > 0 &&
-        editor.contains(selection.anchorNode) &&
-        editor.contains(selection.focusNode)
-    ) {
-        savedRange = selection.getRangeAt(0).cloneRange();
-    }
+        updateToolbarState();
+    });
 }
 
-function restoreEditorSelection() {
-    if (!savedRange) {
+/* ======================================
+   HIGHLIGHT BUTTON — PRESERVED MODE
+====================================== */
+
+// Remove only the highlight mark from stored marks.
+// This changes future typing at the cursor, not existing highlighted text.
+function clearStoredHighlight(tiptap) {
+    const { state, view } = tiptap;
+    const highlightType = state.schema.marks.highlight;
+
+    if (!highlightType) {
+        console.error("Tiptap Highlight extension is missing.");
         return;
     }
 
-    editor.focus();
-
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(savedRange);
-}
-
-editor.addEventListener("mouseup", saveEditorSelection);
-editor.addEventListener("keyup", saveEditorSelection);
-
-
-// ======================================
-// TEXT STYLE DROPDOWN
-// ======================================
-
-blockFormat.addEventListener("mousedown", saveEditorSelection);
-
-blockFormat.addEventListener("change", function() {
-    restoreEditorSelection();
-
-    document.execCommand(
-        "formatBlock",
-        false,
-        blockFormat.value
+    const storedMarks = state.storedMarks || state.selection.$from.marks();
+    const nextMarks = storedMarks.filter(
+        mark => mark.type !== highlightType
     );
 
-    markAsEdited();
-});
-
-
-function getCurrentBlock() {
-    const selection = window.getSelection();
-
-    if (!selection || !selection.rangeCount) return null;
-
-    let node = selection.focusNode;
-
-    if (!node) return null;
-
-    if (node.nodeType === Node.TEXT_NODE) {
-        node = node.parentElement;
-    }
-
-    if (!node || !editor.contains(node)) return null;
-
-    return node.closest("p, h1, h2, h3, h4, blockquote");
+    view.dispatch(state.tr.setStoredMarks(nextMarks));
 }
 
-function updateBlockFormat() {
-    const block = getCurrentBlock();
+function updateHighlightButton() {
+    if (!highlightBtn) return;
 
-    if (block && editor.contains(block)) {
-        blockFormat.value = block.tagName.toLowerCase();
-    } else if (editor.contains(document.activeElement)) {
-        blockFormat.value = "p";
-    }
-}
+    const tiptap = getTiptapEditor();
+    const selectedTextIsHighlighted = tiptap
+        ? tiptap.isActive("highlight")
+        : false;
 
-// Apply the selected block style
-blockFormat.addEventListener("mousedown", saveEditorSelection);
-
-blockFormat.addEventListener("change", function() {
-    restoreEditorSelection();
-
-    document.execCommand(
-        "formatBlock",
-        false,
-        blockFormat.value
+    highlightBtn.classList.toggle(
+        "active",
+        highlightMode || selectedTextIsHighlighted
     );
 
-    markAsEdited();
-    updateBlockFormat();
-});
+    highlightBtn.setAttribute(
+        "aria-pressed",
+        String(highlightMode || selectedTextIsHighlighted)
+    );
+}
 
-// When Enter is pressed inside a heading,
-// make the new line normal text if the browser keeps it as a heading.
-editor.addEventListener("keydown", function(event) {
-    if (event.key !== "Enter" || event.shiftKey) return;
+if (highlightBtn && highlightInput) {
+    highlightBtn.addEventListener("mousedown", event => {
+        // Preserve the editor selection when the toolbar is clicked.
+        event.preventDefault();
+    });
 
-    const previousBlock = getCurrentBlock();
+    highlightBtn.addEventListener("click", () => {
+        const tiptap = getTiptapEditor();
+        if (!tiptap || !tiptap.isEditable) return;
 
-    if (
-        !previousBlock ||
-        !/^H[1-3]$/.test(previousBlock.tagName)
-    ) {
-        return;
-    }
+        highlightMode = !highlightMode;
 
-    setTimeout(function() {
-        const currentBlock = getCurrentBlock();
-
-        if (
-            currentBlock &&
-            /^H[1-3]$/.test(currentBlock.tagName)
-        ) {
-            document.execCommand("formatBlock", false, "p");
-            markAsEdited();
+        if (highlightMode) {
+            // Keep the last chosen colour and open the picker.
+            highlightInput.click();
+        } else {
+            // Stop future typing from inheriting highlight.
+            clearStoredHighlight(tiptap);
         }
 
-        updateBlockFormat();
-    }, 0);
-});
-
-// Keep the selector synchronized with the cursor
-editor.addEventListener("click", updateBlockFormat);
-editor.addEventListener("keyup", updateBlockFormat);
-editor.addEventListener("mouseup", updateBlockFormat);
-editor.addEventListener("input", updateBlockFormat);
-
-document.addEventListener("selectionchange", function() {
-    if (editor.contains(document.activeElement)) {
-        updateBlockFormat();
-    }
-});
-
-
-
-// ======================================
-// FONT FAMILY DROPDOWN
-// ======================================
-
-fontFamily.addEventListener("mousedown", saveEditorSelection);
-
-fontFamily.addEventListener("change", function() {
-    restoreEditorSelection();
-
-    document.execCommand(
-        "fontName",
-        false,
-        fontFamily.value
-    );
-
-    markAsEdited();
-});
-
-
-// ======================================
-// FONT SIZE DROPDOWN
-// ======================================
-
-fontSize.addEventListener("mousedown", saveEditorSelection);
-
-fontSize.addEventListener("change", function() {
-    restoreEditorSelection();
-
-    document.execCommand(
-        "fontSize",
-        false,
-        fontSize.value
-    );
-
-    markAsEdited();
-});
-
- // ======================================
-// TEXT COLOUR AND HIGHLIGHT COLOUR
-// ======================================
-
-
- // ======================================
-// TEXT COLOUR AND HIGHLIGHT BUTTONS
-// ======================================
-
-const textColorBtn = document.getElementById("text-color-btn");
-const textColorInput = document.getElementById("text-color");
-const textColorIndicator = document.getElementById("text-color-indicator");
-
-const highlightBtn = document.getElementById("highlight-btn");
-const highlightInput = document.getElementById("highlight-color");
-const highlightIndicator = document.getElementById("highlight-indicator");
-
-let currentTextColor = "#000000";
-let currentHighlightColor = "#ffff00";
-let highlightMode = false;
-
-
-// Prevent toolbar clicks from immediately losing editor selection
-textColorBtn.addEventListener("mousedown", function(event) {
-    event.preventDefault();
-    saveEditorSelection();
-});
-
-highlightBtn.addEventListener("mousedown", function(event) {
-    event.preventDefault();
-    saveEditorSelection();
-});
-
-
-// Open text colour options
-textColorBtn.addEventListener("click", function() {
-    saveEditorSelection();
-    textColorInput.click();
-});
-
-
-// Apply text colour only after the user picks a colour
-textColorInput.addEventListener("input", function() {
-    currentTextColor = textColorInput.value;
-    textColorIndicator.style.backgroundColor = currentTextColor;
-});
-
-textColorInput.addEventListener("change", function() {
-    restoreEditorSelection();
-
-    document.execCommand(
-        "foreColor",
-        false,
-        currentTextColor
-    );
-
-    markAsEdited();
-    saveEditorSelection();
-});
-
-
-
- // Toggle highlight mode
-
-
-highlightBtn.addEventListener("click", function() {
-    saveEditorSelection();
-    restoreEditorSelection();
-
-    highlightMode = !highlightMode;
-    console.log("Highlight mode:", highlightMode);
-console.log("Button clicked!");
-
-    highlightBtn.classList.toggle("active", highlightMode);
-    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
-
-    if (highlightMode) {
-        highlightInput.click();
-        return;
-    }
-
-    // Move the cursor to a position with no visible highlight.
-    const selection = window.getSelection();
-
-    if (!selection || !selection.rangeCount) return;
-
-    const range = selection.getRangeAt(0).cloneRange();
-    range.collapse(false);
-
-    let node = range.startContainer;
-
-    if (node.nodeType === Node.TEXT_NODE) {
-        node = node.parentElement;
-    }
-
-    const highlightedElement = node?.closest?.(
-        'mark, span[style*="background-color"], font[style*="background-color"]'
-    );
-
-    if (!highlightedElement || !editor.contains(highlightedElement)) {
-        saveEditorSelection();
-        return;
-    }
-
-    // Use the editor's white page background to mask
-    // the highlight only for newly typed text.
-    const marker = document.createElement("span");
-    marker.style.backgroundColor = "#ffffff";
-
-    const cursorText = document.createTextNode("\u200B");
-    marker.appendChild(cursorText);
-
-    range.insertNode(marker);
-
-    const newRange = document.createRange();
-    newRange.setStart(cursorText, 1);
-    newRange.collapse(true);
-
-    selection.removeAllRanges();
-    selection.addRange(newRange);
-
-    saveEditorSelection();
-    markAsEdited();
-});
-
-editor.addEventListener("beforeinput", function(event) {
-    if (highlightMode) return;
-
-    // Do not interfere with deletions, formatting, or other edits.
-    if (event.inputType !== "insertText") return;
-
-    const selection = window.getSelection();
-
-    if (!selection || !selection.rangeCount) return;
-
-    const range = selection.getRangeAt(0);
-
-    if (!editor.contains(range.startContainer)) return;
-
-    let node = range.startContainer;
-
-    if (node.nodeType === Node.TEXT_NODE) {
-        node = node.parentElement;
-    }
-
-    const highlightedElement = node?.closest?.(
-        'mark, span[style*="background-color"], font[style*="background-color"]'
-    );
-
-    if (highlightedElement && editor.contains(highlightedElement)) {
-        // Remove the inherited highlight from the typing position only.
-        const parent = highlightedElement.parentNode;
-        const text = document.createTextNode("");
-        parent.insertBefore(text, highlightedElement.nextSibling);
-
-        const newRange = document.createRange();
-        newRange.setStart(text, 0);
-        newRange.collapse(true);
-
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-    }
-});
-
-
-
-
-
-// Preview the selected highlight colour
-highlightInput.addEventListener("input", function() {
-    currentHighlightColor = highlightInput.value;
-    highlightIndicator.style.backgroundColor = currentHighlightColor;
-});
-
-
-
-highlightInput.addEventListener("change", function() {
-    if (!highlightMode) return;
-
-    restoreEditorSelection();
-
-    document.execCommand("styleWithCSS", false, true);
-    document.execCommand("hiliteColor", false, currentHighlightColor);
-
-    markAsEdited();
-    saveEditorSelection();
-});
-
-
-
-
-// ======================================
-// UNDO AND REDO
-// ======================================
-
-undoButton.addEventListener("mousedown", function(event) {
-    event.preventDefault();
-});
-
-undoButton.addEventListener("click", function() {
-    editor.focus();
-    document.execCommand("undo");
-    markAsEdited();
-});
-
-redoButton.addEventListener("mousedown", function(event) {
-    event.preventDefault();
-});
-
-redoButton.addEventListener("click", function() {
-    editor.focus();
-    document.execCommand("redo");
-    markAsEdited();
-});
-///
-////
-function updateFormattingButtons() {
-    const commands = ["bold", "italic", "underline"];
-
-    commands.forEach(command => {
-        const button = document.querySelector(
-            `[data-command="${command}"]`
-        );
-
-        if (!button) return;
-
-        const isActive = document.queryCommandState(command);
-
-        button.classList.toggle("active", isActive);
+        updateHighlightButton();
+    });
+
+    highlightInput.addEventListener("input", () => {
+        currentHighlightColor = highlightInput.value;
+
+        if (highlightIndicator) {
+            highlightIndicator.style.backgroundColor =
+                currentHighlightColor;
+        }
+    });
+
+    highlightInput.addEventListener("change", () => {
+        const tiptap = getTiptapEditor();
+        if (!tiptap || !tiptap.isEditable || !highlightMode) return;
+
+        currentHighlightColor = highlightInput.value;
+
+        // Apply the chosen colour to a selection, or set it for typing
+        // when the selection is just a cursor.
+        tiptap.chain()
+            .focus()
+            .setHighlight({ color: currentHighlightColor })
+            .run();
+
+        markAsEdited();
+        updateHighlightButton();
+        updateToolbarState();
     });
 }
 
-editor.addEventListener("keyup", updateFormattingButtons);
-editor.addEventListener("mouseup", updateFormattingButtons);
-editor.addEventListener("input", updateFormattingButtons);
+/* ======================================
+   UNDO AND REDO
+====================================== */
+
+if (undoButton) {
+    undoButton.addEventListener("mousedown", event => event.preventDefault());
+
+    undoButton.addEventListener("click", () => {
+        runTiptapCommand(tiptap => {
+            tiptap.chain().focus().undo().run();
+        });
+    });
+}
+
+if (redoButton) {
+    redoButton.addEventListener("mousedown", event => event.preventDefault());
+
+    redoButton.addEventListener("click", () => {
+        runTiptapCommand(tiptap => {
+            tiptap.chain().focus().redo().run();
+        });
+    });
+}
+
+/* ======================================
+   SELECTION AND EDITOR STATE
+====================================== */
 
 document.addEventListener("selectionchange", () => {
-    if (editor.contains(document.activeElement)) {
-        updateFormattingButtons();
+    const tiptap = getTiptapEditor();
+
+    if (tiptap && tiptap.isFocused) {
+        updateToolbarState();
+        updateHighlightButton();
     }
 });
-// ======================================
-// EVENT LISTENERS
-// ======================================
 
-editor.addEventListener("input", markAsEdited);
+/* ======================================
+   EVENT LISTENERS
+====================================== */
 
-titleInput.addEventListener("input", markAsEdited);
+if (titleInput) {
+    titleInput.addEventListener("input", () => {
+        const doc = getActiveDocument();
+        if (!doc || doc.role === "viewer") return;
 
-newDocumentButton.addEventListener("click", newDocument);
+        doc.title = titleInput.value.trim() || "Untitled document";
+        dirtyDocuments.add(doc.id);
 
-shareButton.addEventListener('click', () => showSharing().catch(error => alert(error.message)));
+        renderDocumentList();
+        saveStatus.textContent = "Saving...";
 
+        clearTimeout(saveTimer);
 
-// ======================================
-// START APPLICATION
-// ======================================
+        saveTimer = setTimeout(() => {
+            persistDocument(doc).catch(error => {
+                console.error("Title save failed:", error);
+            });
+        }, 500);
+    });
+}
 
-startAuthentication();
+if (newDocumentButton) {
+    newDocumentButton.addEventListener("click", newDocument);
+}
 
-window.addEventListener('beforeunload', event => {
-    if(dirtyDocuments.size) { event.preventDefault(); event.returnValue = ''; }
+if (shareButton) {
+    shareButton.addEventListener("click", () => {
+        if (typeof showSharing === "function") {
+            showSharing().catch(error => alert(error.message));
+        }
+    });
+}
+
+const retrySaveButton = document.getElementById("retry-save");
+
+if (retrySaveButton) {
+    retrySaveButton.addEventListener("click", () => {
+        persistDocument(getActiveDocument()).catch(error => {
+            alert(error.message);
+        });
+    });
+}
+
+window.addEventListener("beforeunload", event => {
+    if (dirtyDocuments.size > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+    }
 });
-document.getElementById('retry-save').addEventListener('click', () => persistDocument(getActiveDocument()).catch(error => alert(error.message)));
+
+/* ======================================
+   START APPLICATION
+====================================== */
+
+if (typeof startAuthentication === "function") {
+    startAuthentication();
+} else {
+    console.error("startAuthentication() was not found. Check auth.js.");
+}
