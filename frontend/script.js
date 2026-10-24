@@ -613,116 +613,77 @@ if (fontSize) {
         markAsEdited();
     });
 }
-
-/* ======================================
-   TEXT COLOUR
-====================================== */
-
-if (textColorBtn && textColorInput) {
-    textColorBtn.addEventListener("mousedown", event => {
-        event.preventDefault();
-        saveEditorSelection();
-    });
-
-    textColorBtn.addEventListener("click", () => {
-        saveEditorSelection();
-        textColorInput.click();
-    });
-
-    textColorInput.addEventListener("input", () => {
-        currentTextColor = textColorInput.value;
-
-        if (textColorIndicator) {
-            textColorIndicator.style.backgroundColor = currentTextColor;
-        }
-    });
-
-    textColorInput.addEventListener("change", () => {
-        restoreEditorSelection();
-
-        document.execCommand("foreColor", false, currentTextColor);
-
-        markAsEdited();
-        saveEditorSelection();
-    });
-}
+ // ======================================
+// TEXT COLOUR AND HIGHLIGHT BUTTONS
+// ======================================
 
 
-/* ======================================
-   HIGHLIGHT
-====================================== */
+// Prevent toolbar clicks from immediately losing editor selection
+textColorBtn.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+    saveEditorSelection();
+});
 
-if (highlightBtn && highlightInput) {
-    highlightBtn.addEventListener("mousedown", event => {
-        event.preventDefault();
-        saveEditorSelection();
-    });
+highlightBtn.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+    saveEditorSelection();
+});
 
-    highlightBtn.addEventListener("click", () => {
-        if (editor.contentEditable !== "true") return;
 
-        saveEditorSelection();
+// Open text colour options
+textColorBtn.addEventListener("click", function() {
+    saveEditorSelection();
+    textColorInput.click();
+});
 
-        // Clicking the button toggles highlight mode.
-        highlightMode = !highlightMode;
-        updateHighlightButton();
 
-        if (highlightMode) {
-            highlightInput.click();
-        }
-    });
+// Apply text colour only after the user picks a colour
+textColorInput.addEventListener("input", function() {
+    currentTextColor = textColorInput.value;
+    textColorIndicator.style.backgroundColor = currentTextColor;
+});
 
-    highlightInput.addEventListener("input", () => {
-        currentHighlightColor = highlightInput.value;
+textColorInput.addEventListener("change", function() {
+    restoreEditorSelection();
 
-        if (highlightIndicator) {
-            highlightIndicator.style.backgroundColor =
-                currentHighlightColor;
-        }
-    });
+    document.execCommand(
+        "foreColor",
+        false,
+        currentTextColor
+    );
 
-    highlightInput.addEventListener("change", () => {
-        currentHighlightColor = highlightInput.value;
+    markAsEdited();
+    saveEditorSelection();
+});
 
-        if (highlightIndicator) {
-            highlightIndicator.style.backgroundColor =
-                currentHighlightColor;
-        }
 
-        if (!highlightMode) return;
 
-        restoreEditorSelection();
-        editor.focus();
+ // Toggle highlight mode
 
-        document.execCommand("styleWithCSS", false, true);
-        document.execCommand(
-            "hiliteColor",
-            false,
-            currentHighlightColor
-        );
 
-        markAsEdited();
-        saveEditorSelection();
+highlightBtn.addEventListener("click", function() {
+    saveEditorSelection();
+    restoreEditorSelection();
 
-        // Keep the button active until clicked again.
-        updateHighlightButton();
-    });
-}
+    highlightMode = !highlightMode;
+    console.log("Highlight mode:", highlightMode);
+console.log("Button clicked!");
 
-// Prevent newly typed text from inheriting an old highlight
-// when highlight mode is switched off.
-editor.addEventListener("beforeinput", event => {
-    if (highlightMode || event.inputType !== "insertText") return;
+    highlightBtn.classList.toggle("active", highlightMode);
+    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
 
+    if (highlightMode) {
+        highlightInput.click();
+        return;
+    }
+
+    // Move the cursor to a position with no visible highlight.
     const selection = window.getSelection();
+
     if (!selection || !selection.rangeCount) return;
 
-    const range = selection.getRangeAt(0);
-
-    if (
-        !editor.contains(range.startContainer) ||
-        !editor.contains(range.endContainer)
-    ) return;
+    const range = selection.getRangeAt(0).cloneRange();
+    range.collapse(false);
 
     let node = range.startContainer;
 
@@ -734,28 +695,94 @@ editor.addEventListener("beforeinput", event => {
         'mark, span[style*="background-color"], font[style*="background-color"]'
     );
 
-    if (
-        !highlightedElement ||
-        !editor.contains(highlightedElement)
-    ) return;
+    if (!highlightedElement || !editor.contains(highlightedElement)) {
+        saveEditorSelection();
+        return;
+    }
 
-    const textNode = document.createTextNode("");
+    // Use the editor's white page background to mask
+    // the highlight only for newly typed text.
+    const marker = document.createElement("span");
+    marker.style.backgroundColor = "#ffffff";
 
-    highlightedElement.parentNode.insertBefore(
-        textNode,
-        highlightedElement.nextSibling
-    );
+    const cursorText = document.createTextNode("\u200B");
+    marker.appendChild(cursorText);
+
+    range.insertNode(marker);
 
     const newRange = document.createRange();
-    newRange.setStart(textNode, 0);
+    newRange.setStart(cursorText, 1);
     newRange.collapse(true);
 
     selection.removeAllRanges();
     selection.addRange(newRange);
 
     saveEditorSelection();
+    markAsEdited();
 });
 
+editor.addEventListener("beforeinput", function(event) {
+    if (highlightMode) return;
+
+    // Do not interfere with deletions, formatting, or other edits.
+    if (event.inputType !== "insertText") return;
+
+    const selection = window.getSelection();
+
+    if (!selection || !selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+
+    if (!editor.contains(range.startContainer)) return;
+
+    let node = range.startContainer;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+        node = node.parentElement;
+    }
+
+    const highlightedElement = node?.closest?.(
+        'mark, span[style*="background-color"], font[style*="background-color"]'
+    );
+
+    if (highlightedElement && editor.contains(highlightedElement)) {
+        // Remove the inherited highlight from the typing position only.
+        const parent = highlightedElement.parentNode;
+        const text = document.createTextNode("");
+        parent.insertBefore(text, highlightedElement.nextSibling);
+
+        const newRange = document.createRange();
+        newRange.setStart(text, 0);
+        newRange.collapse(true);
+
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+    }
+});
+
+
+
+
+
+// Preview the selected highlight colour
+highlightInput.addEventListener("input", function() {
+    currentHighlightColor = highlightInput.value;
+    highlightIndicator.style.backgroundColor = currentHighlightColor;
+});
+
+
+
+highlightInput.addEventListener("change", function() {
+    if (!highlightMode) return;
+
+    restoreEditorSelection();
+
+    document.execCommand("styleWithCSS", false, true);
+    document.execCommand("hiliteColor", false, currentHighlightColor);
+
+    markAsEdited();
+    saveEditorSelection();
+});
 
 /* ======================================
    UNDO AND REDO
