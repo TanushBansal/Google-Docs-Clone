@@ -651,28 +651,88 @@ if (textColorBtn && textColorInput) {
    HIGHLIGHT
 ====================================== */
 
-highlightBtn.addEventListener("click", function() {
-    saveEditorSelection();
-    restoreEditorSelection();
 
-    highlightMode = !highlightMode;
-    console.log("Highlight mode:", highlightMode);
-console.log("Button clicked!");
+/* ======================================
+   HIGHLIGHT
+====================================== */
 
-    updateHighlightButton();
 
-    if (highlightMode) {
-        highlightInput.click();
-        return;
+
+// Open the color picker and remember the selected text.
+if (highlightBtn && highlightInput) {
+    highlightBtn.addEventListener("mousedown", event => {
+        event.preventDefault();
+        saveEditorSelection();
+    });
+
+    highlightBtn.addEventListener("click", () => {
+        if (editor.contentEditable !== "true") return;
+
+        restoreEditorSelection();
+
+        highlightMode = !highlightMode;
+        updateHighlightButton();
+
+        if (highlightMode) {
+            highlightInput.click();
+        }
+    });
+
+    // Preview the selected color in the toolbar.
+    highlightInput.addEventListener("input", () => {
+        currentHighlightColor = highlightInput.value;
+
+        if (highlightIndicator) {
+            highlightIndicator.style.backgroundColor =
+                currentHighlightColor;
+        }
+    });
+
+    // Apply the chosen color to the selected text.
+    highlightInput.addEventListener("change", () => {
+    currentHighlightColor = highlightInput.value;
+
+    if (highlightIndicator) {
+        highlightIndicator.style.backgroundColor =
+            currentHighlightColor;
     }
 
-    // Move the cursor to a position with no visible highlight.
+    restoreEditorSelection();
+    editor.focus();
+
+    document.execCommand("styleWithCSS", false, true);
+
+    document.execCommand(
+        "hiliteColor",
+        false,
+        currentHighlightColor
+    );
+
+    markAsEdited();
+    saveEditorSelection();
+
+    highlightMode = false;
+    updateHighlightButton();
+});
+}
+
+// Prevent newly typed text from inheriting an old highlight
+// when highlight mode is switched off.
+editor.addEventListener("beforeinput", event => {
+    if (highlightMode || event.inputType !== "insertText") return;
+
     const selection = window.getSelection();
 
     if (!selection || !selection.rangeCount) return;
 
-    const range = selection.getRangeAt(0).cloneRange();
-    range.collapse(false);
+    const range = selection.getRangeAt(0);
+
+    if (
+        !editor.contains(range.startContainer) ||
+        !editor.contains(range.endContainer)
+    ) {
+        return;
+    }
 
     let node = range.startContainer;
 
@@ -685,69 +745,26 @@ console.log("Button clicked!");
     );
 
     if (!highlightedElement || !editor.contains(highlightedElement)) {
-        saveEditorSelection();
         return;
     }
 
-    // Use the editor's white page background to mask
-    // the highlight only for newly typed text.
-    const marker = document.createElement("span");
-    marker.style.backgroundColor = "#ffffff";
-
-    const cursorText = document.createTextNode("\u200B");
-    marker.appendChild(cursorText);
-
-    range.insertNode(marker);
+    // Move the cursor outside the highlighted element.
+    const textNode = document.createTextNode("");
+    highlightedElement.parentNode.insertBefore(
+        textNode,
+        highlightedElement.nextSibling
+    );
 
     const newRange = document.createRange();
-    newRange.setStart(cursorText, 1);
+    newRange.setStart(textNode, 0);
     newRange.collapse(true);
 
     selection.removeAllRanges();
     selection.addRange(newRange);
 
     saveEditorSelection();
-    markAsEdited();
 });
 
-editor.addEventListener("beforeinput", function(event) {
-    if (highlightMode) return;
-
-    // Do not interfere with deletions, formatting, or other edits.
-    if (event.inputType !== "insertText") return;
-
-    const selection = window.getSelection();
-
-    if (!selection || !selection.rangeCount) return;
-
-    const range = selection.getRangeAt(0);
-
-    if (!editor.contains(range.startContainer)) return;
-
-    let node = range.startContainer;
-
-    if (node.nodeType === Node.TEXT_NODE) {
-        node = node.parentElement;
-    }
-
-    const highlightedElement = node?.closest?.(
-        'mark, span[style*="background-color"], font[style*="background-color"]'
-    );
-
-    if (highlightedElement && editor.contains(highlightedElement)) {
-        // Remove the inherited highlight from the typing position only.
-        const parent = highlightedElement.parentNode;
-        const text = document.createTextNode("");
-        parent.insertBefore(text, highlightedElement.nextSibling);
-
-        const newRange = document.createRange();
-        newRange.setStart(text, 0);
-        newRange.collapse(true);
-
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-    }
-});
 
 /* ======================================
    UNDO AND REDO
