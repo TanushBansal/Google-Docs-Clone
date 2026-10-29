@@ -1,44 +1,31 @@
+const express = require("express");
+const cors = require("cors");
 
-require('dotenv').config({
-    path: require('node:path').join(__dirname, '.env')
+const app = express();
+const PORT = 3000;
+
+app.use(cors({
+    origin: [
+        "http://127.0.0.1:5500",
+        "http://localhost:5500"
+    ]
+}));
+
+app.use(express.json());
+
+app.get("/", (req, res) => {
+    res.send("Google Docs Clone Backend is running!");
 });
 
-const mongoose = require('mongoose');
-const http = require('node:http');
-const { createApp } = require('./app');
-
-async function startServer() {
-    if (!process.env.MONGODB_URI) {
-        throw new Error('Set MONGODB_URI in backend/.env');
-    }
-
-    if (!process.env.GOOGLE_CLIENT_ID) {
-        throw new Error('Set GOOGLE_CLIENT_ID in backend/.env');
-    }
-
-    await mongoose.connect(process.env.MONGODB_URI);
-
-    const app = createApp();
-
-    // Create one HTTP server for Express and WebSockets.
-    const server = http.createServer(app);
-
-    const port = Number(process.env.PORT || 3000);
-
-    server.listen(port, () => {
-        console.log(
-            `Connected to MongoDB. Open http://localhost:${port}`
-        );
+app.get("/health", (req, res) => {
+    res.json({
+        status: "ok",
+        message: "Backend is working successfully!"
     });
+});
+const documentRoutes = require("./routes/docroutes");
 
-    return server;
-}
-
-if (require.main === module) {
-    startServer().catch(error => {
-        console.error('Failed to start server:', error.message);
-        process.exitCode = 1;
-    });
-}
-
-module.exports = { startServer };
+app.use("/api/documents", documentRoutes);
+app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+});

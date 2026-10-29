@@ -1,17 +1,14 @@
 
-/* ======================================
-   GOOGLE DOCS CLONE - DOCUMENT MANAGER
-====================================== */
-
-const API_URL = "/api/documents";
-const ACTIVE_KEY = "myDocsActiveDocument";
+ // ======================================
+// GOOGLE DOCS CLONE - DOCUMENT MANAGER
+// ======================================
+const API_URL = "http://localhost:3000/api/documents";
 
 async function apiRequest(endpoint = "", options = {}) {
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers: {
             "Content-Type": "application/json",
-            "X-Requested-With": "DocsApp",
             ...(options.headers || {})
         }
     });
@@ -19,15 +16,13 @@ async function apiRequest(endpoint = "", options = {}) {
     const data = await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(data?.message || `API error: ${response.status}`);
+        throw new Error(
+            data?.message || `API error: ${response.status}`
+        );
     }
 
     return data;
 }
-
-/* ======================================
-   DOM ELEMENTS
-====================================== */
 
 const editor = document.getElementById("editor");
 const titleInput = document.getElementById("document-title");
@@ -40,195 +35,173 @@ const fontFamily = document.getElementById("font-family");
 
 const undoButton = document.getElementById("undo-btn");
 const redoButton = document.getElementById("redo-btn");
+const clearButton = document.getElementById("clear-format");
 const shareButton = document.getElementById("share-btn");
-const newDocumentButton = document.getElementById("new-document-btn");
-const documentList = document.getElementById("document-list");
 
-const textColorBtn = document.getElementById("text-color-btn");
-const textColorInput = document.getElementById("text-color");
-const textColorIndicator = document.getElementById("text-color-indicator");
+const newDocumentButton =
+    document.getElementById("new-document-btn");
 
-const highlightBtn = document.getElementById("highlight-btn");
-const highlightInput = document.getElementById("highlight-color");
-const highlightIndicator = document.getElementById("highlight-indicator");
+const documentList =
+    document.getElementById("document-list");
 
-const retrySaveButton = document.getElementById("retry-save");
-const accessRole = document.getElementById("access-role");
+const STORAGE_KEY = "myDocsDocuments";
+const ACTIVE_KEY = "myDocsActiveDocument";
 
-/* ======================================
-   APPLICATION STATE
-====================================== */
-
+// Current application state
 let documents = [];
 let activeDocumentId = null;
 let saveTimer = null;
-let pendingSave = Promise.resolve();
-const dirtyDocuments = new Set();
 
-let savedRange = null;
-let highlightMode = false;
-let currentTextColor = textColorInput?.value || "#000000";
-let currentHighlightColor = highlightInput?.value || "#ffff00";
-function updateHighlightButton() {
-    if (!highlightBtn) return;
 
-    highlightBtn.classList.toggle("active", highlightMode);
-    highlightBtn.setAttribute("aria-pressed", String(highlightMode));
+// ======================================
+// CREATE A NEW DOCUMENT OBJECT
+// ======================================
+
+function createDocument(title = "Untitled document") {
+    return {
+        id: crypto.randomUUID(),
+        title: title,
+        content:"",
+        updatedAt: new Date().toISOString()
+    };
 }
 
-const fontSizes = {
-    "2": "10px",
-    "3": "12px",
-    "4": "14px",
-    "5": "18px",
-    "6": "24px",
-    "7": "36px"
-};
 
-/* ======================================
-   DOCUMENT HELPERS
-====================================== */
+// ======================================
+// LOAD SAVED DOCUMENTS
+// ======================================
 
-function getActiveDocument() {
-    return documents.find(doc => doc.id === activeDocumentId);
+async function loadDocuments() {
+    try {
+        saveStatus.textContent = "Loading documents...";
+
+        documents = await apiRequest();
+
+        const savedActiveId = localStorage.getItem(ACTIVE_KEY);
+
+        const activeExists = documents.some(function(doc) {
+            return doc.id === savedActiveId;
+        });
+
+        if (documents.length === 0) {
+            await newDocument();
+            return;
+        }
+
+        activeDocumentId = activeExists
+            ? savedActiveId
+            : documents[0].id;
+
+        renderDocumentList();
+        openDocument(activeDocumentId);
+
+    } catch (error) {
+        console.error("Could not load documents:", error);
+        saveStatus.textContent = "Could not connect to backend";
+        alert("Could not load documents. Check that your backend is running.");
+    }
 }
+
+
+// ======================================
+// SAVE ALL DOCUMENTS TO BROWSER STORAGE
+// ======================================
 
 function saveAllDocuments() {
-    localStorage.setItem(ACTIVE_KEY, activeDocumentId || "");
+    try {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(documents)
+        );
+
+        localStorage.setItem(
+            ACTIVE_KEY,
+            activeDocumentId || ""
+        );
+
+        return true;
+    } catch (error) {
+        console.error("Could not save documents:", error);
+        saveStatus.textContent = "Save failed";
+        return false;
+    }
 }
+
+
+// ======================================
+// FIND THE CURRENT DOCUMENT
+// ======================================
+
+function getActiveDocument() {
+    return documents.find(function(doc) {
+        return doc.id === activeDocumentId;
+    });
+}
+
+
+// ======================================
+// UPDATE WORD COUNT
+// ======================================
 
 function updateWordCount() {
-    if (!wordCount || !editor) return;
-
     const text = editor.innerText.trim();
-    const count = text ? text.split(/\s+/).length : 0;
 
-    wordCount.textContent = `Words: ${count}`;
+    const words = text
+        ? text.split(/\s+/).length
+        : 0;
+
+    wordCount.textContent = "Words: " + words;
 }
 
-/* ======================================
-   AUTOSAVE
-====================================== */
+
+// ======================================
+// SCHEDULE AUTOSAVE
+// ======================================
 
 function markAsEdited() {
     const doc = getActiveDocument();
 
-    if (!doc || doc.role === "viewer") return;
+    if (!doc) {
+        return;
+    }
 
     doc.title = titleInput.value.trim() || "Untitled document";
     doc.content = editor.innerHTML;
     doc.updatedAt = new Date().toISOString();
 
-    dirtyDocuments.add(doc.id);
-
-    if (saveStatus) saveStatus.textContent = "Saving...";
-
+    saveStatus.textContent = "Saving...";
     updateWordCount();
     renderDocumentList();
-    saveAllDocuments();
 
     clearTimeout(saveTimer);
 
-    saveTimer = setTimeout(() => {
-        persistDocument(doc).catch(error => {
+    saveTimer = setTimeout(async function() {
+        try {
+            await apiRequest("/" + doc.id, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: doc.title,
+                    content: doc.content
+                })
+            });
+
+            saveStatus.textContent = "All changes saved";
+        } catch (error) {
             console.error("Autosave failed:", error);
-        });
+            saveStatus.textContent = "Save failed";
+        }
     }, 500);
 }
 
-function persistDocument(doc) {
-    if (!doc || doc.role === "viewer" || !dirtyDocuments.has(doc.id)) {
-        return pendingSave;
-    }
 
-    const snapshot = {
-        title: doc.title,
-        content: doc.content
-    };
-
-    const task = pendingSave.catch(() => {}).then(async () => {
-        try {
-            await apiRequest("/" + encodeURIComponent(doc.id), {
-                method: "PUT",
-                body: JSON.stringify(snapshot)
-            });
-
-            if (
-                doc.title === snapshot.title &&
-                doc.content === snapshot.content
-            ) {
-                dirtyDocuments.delete(doc.id);
-            }
-
-            if (activeDocumentId === doc.id && saveStatus) {
-                saveStatus.textContent = dirtyDocuments.has(doc.id)
-                    ? "Saving..."
-                    : "All changes saved";
-            }
-        } catch (error) {
-            if (activeDocumentId === doc.id && saveStatus) {
-                saveStatus.textContent =
-                    "Save failed — keep this tab open and retry";
-            }
-
-            throw error;
-        }
-    });
-
-    pendingSave = task;
-    return task;
-}
-
-/* ======================================
-   LOAD DOCUMENTS
-====================================== */
-
-async function loadDocuments() {
-    try {
-        if (saveStatus) saveStatus.textContent = "Loading documents...";
-
-        documents = await apiRequest();
-
-        const savedActiveId =
-            new URLSearchParams(location.search).get("doc") ||
-            localStorage.getItem(ACTIVE_KEY);
-
-        if (!documents.length) {
-            await newDocument();
-            return;
-        }
-
-        activeDocumentId = documents.some(
-            doc => doc.id === savedActiveId
-        )
-            ? savedActiveId
-            : documents[0].id;
-
-        renderDocumentList();
-        await openDocument(activeDocumentId);
-    } catch (error) {
-        console.error("Could not load documents:", error);
-
-        if (saveStatus) {
-            saveStatus.textContent = "Could not load documents";
-        }
-
-        alert("Could not load documents. Check the backend and console.");
-    }
-}
-
-window.loadDocuments = loadDocuments;
-
-/* ======================================
-   SIDEBAR
-====================================== */
+// ======================================
+// RENDER THE SIDEBAR DOCUMENT LIST
+// ======================================
 
 function renderDocumentList() {
-    if (!documentList) return;
-
     documentList.innerHTML = "";
 
-    documents.forEach(doc => {
+    documents.forEach(function(doc) {
         const item = document.createElement("div");
         item.className = "document-item";
 
@@ -242,128 +215,63 @@ function renderDocumentList() {
         const name = document.createElement("span");
         name.className = "document-name";
         name.textContent = doc.title || "Untitled document";
-        name.title = name.textContent;
+        name.title = doc.title || "Untitled document";
 
-        item.append(icon, name);
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "delete-document-btn";
+        deleteButton.textContent = "×";
+        deleteButton.title = "Delete document";
+        deleteButton.setAttribute("aria-label", "Delete document");
 
-        if (doc.role === "owner") {
-            const deleteButton = document.createElement("button");
-            deleteButton.className = "delete-document-btn";
-            deleteButton.textContent = "×";
-            deleteButton.title = "Delete document";
-            deleteButton.setAttribute("aria-label", "Delete document");
+        item.appendChild(icon);
+        item.appendChild(name);
+        item.appendChild(deleteButton);
 
-            deleteButton.addEventListener("click", event => {
-                event.stopPropagation();
-                deleteDocument(doc.id);
-            });
+        item.addEventListener("click", function() {
+            openDocument(doc.id);
+        });
 
-            item.appendChild(deleteButton);
-        }
-
-        item.addEventListener("click", () => {
-            openDocument(doc.id).catch(console.error);
+        deleteButton.addEventListener("click", function(event) {
+            event.stopPropagation();
+            deleteDocument(doc.id);
         });
 
         documentList.appendChild(item);
     });
 }
 
-/* ======================================
-   OPEN DOCUMENT
-====================================== */
 
-async function openDocument(id) {
+// ======================================
+// OPEN AN EXISTING DOCUMENT
+// ======================================
+
+function openDocument(id) {
     clearTimeout(saveTimer);
 
-    // Save the previous document before changing the active ID.
-    const previousDoc = getActiveDocument();
+    const doc = documents.find(function(item) {
+        return item.id === id;
+    });
 
-    try {
-        if (previousDoc) {
-            await persistDocument(previousDoc);
-        }
-    } catch (error) {
-        console.error("Could not save previous document:", error);
+    if (!doc) {
         return;
     }
 
-    try {
-        const fetchedDoc = await apiRequest(
-            "/" + encodeURIComponent(id)
-        );
+    activeDocumentId = doc.id;
 
-        const index = documents.findIndex(doc => doc.id === id);
+    titleInput.value = doc.title;
+    editor.innerHTML = doc.content;
 
-        if (index === -1) {
-            documents.push(fetchedDoc);
-        } else {
-            documents[index] = {
-                ...documents[index],
-                ...fetchedDoc
-            };
-        }
+    saveAllDocuments();
+    renderDocumentList();
+    updateWordCount();
 
-        const doc = documents.find(item => item.id === id);
-        if (!doc) return;
-
-        activeDocumentId = doc.id;
-        savedRange = null;
-
-        const canEdit = doc.role !== "viewer";
-
-        editor.contentEditable = String(canEdit);
-        titleInput.disabled = !canEdit;
-
-        document.querySelectorAll(
-            ".toolbar button, .toolbar select, .toolbar input"
-        ).forEach(control => {
-            control.disabled = !canEdit;
-        });
-
-        if (shareButton) {
-            shareButton.disabled = doc.role !== "owner";
-        }
-
-        if (accessRole) {
-            accessRole.textContent = doc.role || "owner";
-        }
-
-        history.replaceState(
-            null,
-            "",
-            "?doc=" + encodeURIComponent(doc.id)
-        );
-
-        titleInput.value = doc.title || "Untitled document";
-        editor.innerHTML = doc.content || "";
-
-        highlightMode = false;
-        updateHighlightButton();
-        updateBlockFormat();
-
-        saveAllDocuments();
-        renderDocumentList();
-        updateWordCount();
-        updateFormattingButtons();
-
-        if (saveStatus) {
-            saveStatus.textContent = dirtyDocuments.has(doc.id)
-                ? "Unsaved changes"
-                : "All changes saved";
-        }
-    } catch (error) {
-        console.error("Could not open document:", error);
-
-        if (saveStatus) {
-            saveStatus.textContent = error.message;
-        }
-    }
+    saveStatus.textContent = "All changes saved";
 }
 
-/* ======================================
-   CREATE DOCUMENT
-====================================== */
+
+// ======================================
+// CREATE A DOCUMENT
+// ======================================
 
 async function newDocument() {
     try {
@@ -372,7 +280,18 @@ async function newDocument() {
         const currentDoc = getActiveDocument();
 
         if (currentDoc) {
-            await persistDocument(currentDoc);
+            currentDoc.title =
+                titleInput.value.trim() || "Untitled document";
+
+            currentDoc.content = editor.innerHTML;
+
+            await apiRequest("/" + currentDoc.id, {
+                method: "PUT",
+                body: JSON.stringify({
+                    title: currentDoc.title,
+                    content: currentDoc.content
+                })
+            });
         }
 
         const newDoc = await apiRequest("", {
@@ -383,51 +302,58 @@ async function newDocument() {
             })
         });
 
-        if (!newDoc || !newDoc.id) {
-            throw new Error("Server did not return a document ID.");
-        }
-
         documents.unshift(newDoc);
+        activeDocumentId = newDoc.id;
 
-        await openDocument(newDoc.id);
+        localStorage.setItem(ACTIVE_KEY, activeDocumentId);
+
+        renderDocumentList();
+        openDocument(newDoc.id);
+
     } catch (error) {
         console.error("Could not create document:", error);
-
-        if (saveStatus) saveStatus.textContent = "Create failed";
-
+        saveStatus.textContent = "Create failed";
         alert("Could not create the document. Check the backend.");
     }
 }
 
-/* ======================================
-   DELETE DOCUMENT
-====================================== */
+
+// ======================================
+// DELETE A DOCUMENT
+// ======================================
 
 async function deleteDocument(id) {
-    const doc = documents.find(item => item.id === id);
+    const docToDelete = documents.find(function(doc) {
+        return doc.id === id;
+    });
 
-    if (!doc || doc.role !== "owner") return;
+    if (!docToDelete) {
+        return;
+    }
 
-    if (!confirm("Are you sure you want to delete this document?")) {
+    const confirmed = confirm(
+        "Are you sure you want to delete this document?"
+    );
+
+    if (!confirmed) {
         return;
     }
 
     try {
-        if (activeDocumentId === id) {
-            clearTimeout(saveTimer);
-            await persistDocument(doc);
-        }
-
-        await apiRequest("/" + encodeURIComponent(id), {
+        await apiRequest("/" + id, {
             method: "DELETE"
         });
 
-        dirtyDocuments.delete(id);
-        documents = documents.filter(item => item.id !== id);
+        documents = documents.filter(function(doc) {
+            return doc.id !== id;
+        });
 
         if (activeDocumentId === id) {
-            if (documents.length) {
-                await openDocument(documents[0].id);
+            if (documents.length > 0) {
+                activeDocumentId = documents[0].id;
+                localStorage.setItem(ACTIVE_KEY, activeDocumentId);
+                renderDocumentList();
+                openDocument(activeDocumentId);
             } else {
                 activeDocumentId = null;
                 await newDocument();
@@ -437,58 +363,27 @@ async function deleteDocument(id) {
             renderDocumentList();
         }
 
-        saveAllDocuments();
-
-        if (saveStatus) saveStatus.textContent = "Document deleted";
+        saveStatus.textContent = "Document deleted";
     } catch (error) {
         console.error("Delete failed:", error);
-        alert("Could not delete the document.");
+        saveStatus.textContent = "Delete failed";
+        alert("Could not delete the document. Check the backend.");
     }
 }
 
-/* ======================================
-   SAVE AND RESTORE SELECTION
-====================================== */
 
-function saveEditorSelection() {
-    const selection = window.getSelection();
+// ======================================
+// FORMATTING CONTROLS
+// ======================================
 
-    if (!selection || !selection.rangeCount) return;
-
-    const range = selection.getRangeAt(0);
-
-    if (
-        editor.contains(range.startContainer) &&
-        editor.contains(range.endContainer)
-    ) {
-        savedRange = range.cloneRange();
-    }
-}
-
-function restoreEditorSelection() {
-    if (!savedRange) return;
-
-    editor.focus();
-
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(savedRange);
-}
-
-/* ======================================
-   FORMATTING BUTTONS
-====================================== */
-
-document.querySelectorAll("[data-command]").forEach(button => {
-    button.addEventListener("mousedown", event => {
+// Existing toolbar buttons: bold, italic, underline, alignment, etc.
+document.querySelectorAll("[data-command]").forEach(function(button) {
+    button.addEventListener("mousedown", function(event) {
         event.preventDefault();
-        saveEditorSelection();
     });
 
-    button.addEventListener("click", () => {
-        if (editor.contentEditable !== "true") return;
-
-        restoreEditorSelection();
+    button.addEventListener("click", function() {
+        editor.focus();
 
         document.execCommand(
             button.dataset.command,
@@ -497,16 +392,63 @@ document.querySelectorAll("[data-command]").forEach(button => {
         );
 
         markAsEdited();
-        updateFormattingButtons();
     });
 });
+
+
+// ======================================
+// SAVE AND RESTORE TEXT SELECTION
+// ======================================
+
+let savedRange = null;
+
+function saveEditorSelection() {
+    const selection = window.getSelection();
+
+    if (
+        selection &&
+        selection.rangeCount > 0 &&
+        editor.contains(selection.anchorNode) &&
+        editor.contains(selection.focusNode)
+    ) {
+        savedRange = selection.getRangeAt(0).cloneRange();
+    }
+}
+
+function restoreEditorSelection() {
+    if (!savedRange) {
+        return;
+    }
+
+    editor.focus();
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+}
 
 editor.addEventListener("mouseup", saveEditorSelection);
 editor.addEventListener("keyup", saveEditorSelection);
 
-/* ======================================
-   TEXT STYLE DROPDOWN
-====================================== */
+
+// ======================================
+// TEXT STYLE DROPDOWN
+// ======================================
+
+blockFormat.addEventListener("mousedown", saveEditorSelection);
+
+blockFormat.addEventListener("change", function() {
+    restoreEditorSelection();
+
+    document.execCommand(
+        "formatBlock",
+        false,
+        blockFormat.value
+    );
+
+    markAsEdited();
+});
+
 
 function getCurrentBlock() {
     const selection = window.getSelection();
@@ -514,6 +456,7 @@ function getCurrentBlock() {
     if (!selection || !selection.rangeCount) return null;
 
     let node = selection.focusNode;
+
     if (!node) return null;
 
     if (node.nodeType === Node.TEXT_NODE) {
@@ -526,43 +469,52 @@ function getCurrentBlock() {
 }
 
 function updateBlockFormat() {
-    if (!blockFormat) return;
-
     const block = getCurrentBlock();
 
-    if (block) {
+    if (block && editor.contains(block)) {
         blockFormat.value = block.tagName.toLowerCase();
     } else if (editor.contains(document.activeElement)) {
         blockFormat.value = "p";
     }
 }
 
-if (blockFormat) {
-    blockFormat.addEventListener("mousedown", saveEditorSelection);
+// Apply the selected block style
+blockFormat.addEventListener("mousedown", saveEditorSelection);
 
-    blockFormat.addEventListener("change", () => {
-        restoreEditorSelection();
+blockFormat.addEventListener("change", function() {
+    restoreEditorSelection();
 
-        document.execCommand("formatBlock", false, blockFormat.value);
+    document.execCommand(
+        "formatBlock",
+        false,
+        blockFormat.value
+    );
 
-        markAsEdited();
-        updateBlockFormat();
-    });
-}
+    markAsEdited();
+    updateBlockFormat();
+});
 
-editor.addEventListener("keydown", event => {
+// When Enter is pressed inside a heading,
+// make the new line normal text if the browser keeps it as a heading.
+editor.addEventListener("keydown", function(event) {
     if (event.key !== "Enter" || event.shiftKey) return;
 
     const previousBlock = getCurrentBlock();
 
-    if (!previousBlock || !/^H[1-3]$/.test(previousBlock.tagName)) {
+    if (
+        !previousBlock ||
+        !/^H[1-3]$/.test(previousBlock.tagName)
+    ) {
         return;
     }
 
-    setTimeout(() => {
+    setTimeout(function() {
         const currentBlock = getCurrentBlock();
 
-        if (currentBlock && /^H[1-3]$/.test(currentBlock.tagName)) {
+        if (
+            currentBlock &&
+            /^H[1-3]$/.test(currentBlock.tagName)
+        ) {
             document.execCommand("formatBlock", false, "p");
             markAsEdited();
         }
@@ -571,51 +523,77 @@ editor.addEventListener("keydown", event => {
     }, 0);
 });
 
+// Keep the selector synchronized with the cursor
 editor.addEventListener("click", updateBlockFormat);
 editor.addEventListener("keyup", updateBlockFormat);
 editor.addEventListener("mouseup", updateBlockFormat);
 editor.addEventListener("input", updateBlockFormat);
 
-document.addEventListener("selectionchange", () => {
+document.addEventListener("selectionchange", function() {
     if (editor.contains(document.activeElement)) {
         updateBlockFormat();
     }
 });
 
-/* ======================================
-   FONT FAMILY
-====================================== */
 
-if (fontFamily) {
-    fontFamily.addEventListener("mousedown", saveEditorSelection);
 
-    fontFamily.addEventListener("change", () => {
-        restoreEditorSelection();
+// ======================================
+// FONT FAMILY DROPDOWN
+// ======================================
 
-        document.execCommand("fontName", false, fontFamily.value);
+fontFamily.addEventListener("mousedown", saveEditorSelection);
 
-        markAsEdited();
-    });
-}
+fontFamily.addEventListener("change", function() {
+    restoreEditorSelection();
 
-/* ======================================
-   FONT SIZE
-====================================== */
+    document.execCommand(
+        "fontName",
+        false,
+        fontFamily.value
+    );
 
-if (fontSize) {
-    fontSize.addEventListener("mousedown", saveEditorSelection);
+    markAsEdited();
+});
 
-    fontSize.addEventListener("change", () => {
-        restoreEditorSelection();
 
-        document.execCommand("fontSize", false, fontSize.value);
+// ======================================
+// FONT SIZE DROPDOWN
+// ======================================
 
-        markAsEdited();
-    });
-}
+fontSize.addEventListener("mousedown", saveEditorSelection);
+
+fontSize.addEventListener("change", function() {
+    restoreEditorSelection();
+
+    document.execCommand(
+        "fontSize",
+        false,
+        fontSize.value
+    );
+
+    markAsEdited();
+});
+
+ // ======================================
+// TEXT COLOUR AND HIGHLIGHT COLOUR
+// ======================================
+
+
  // ======================================
 // TEXT COLOUR AND HIGHLIGHT BUTTONS
 // ======================================
+
+const textColorBtn = document.getElementById("text-color-btn");
+const textColorInput = document.getElementById("text-color");
+const textColorIndicator = document.getElementById("text-color-indicator");
+
+const highlightBtn = document.getElementById("highlight-btn");
+const highlightInput = document.getElementById("highlight-color");
+const highlightIndicator = document.getElementById("highlight-indicator");
+
+let currentTextColor = "#000000";
+let currentHighlightColor = "#ffff00";
+let highlightMode = false;
 
 
 // Prevent toolbar clicks from immediately losing editor selection
@@ -784,46 +762,47 @@ highlightInput.addEventListener("change", function() {
     saveEditorSelection();
 });
 
-/* ======================================
-   UNDO AND REDO
-====================================== */
 
-if (undoButton) {
-    undoButton.addEventListener("mousedown", event => event.preventDefault());
 
-    undoButton.addEventListener("click", () => {
-        editor.focus();
-        document.execCommand("undo");
-        markAsEdited();
-    });
-}
 
-if (redoButton) {
-    redoButton.addEventListener("mousedown", event => event.preventDefault());
+// ======================================
+// UNDO AND REDO
+// ======================================
 
-    redoButton.addEventListener("click", () => {
-        editor.focus();
-        document.execCommand("redo");
-        markAsEdited();
-    });
-}
+undoButton.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+});
 
-/* ======================================
-   ACTIVE FORMATTING BUTTONS
-====================================== */
+undoButton.addEventListener("click", function() {
+    editor.focus();
+    document.execCommand("undo");
+    markAsEdited();
+});
 
+redoButton.addEventListener("mousedown", function(event) {
+    event.preventDefault();
+});
+
+redoButton.addEventListener("click", function() {
+    editor.focus();
+    document.execCommand("redo");
+    markAsEdited();
+});
+///
+////
 function updateFormattingButtons() {
-    ["bold", "italic", "underline"].forEach(command => {
+    const commands = ["bold", "italic", "underline"];
+
+    commands.forEach(command => {
         const button = document.querySelector(
             `[data-command="${command}"]`
         );
 
         if (!button) return;
 
-        button.classList.toggle(
-            "active",
-            document.queryCommandState(command)
-        );
+        const isActive = document.queryCommandState(command);
+
+        button.classList.toggle("active", isActive);
     });
 }
 
@@ -836,62 +815,25 @@ document.addEventListener("selectionchange", () => {
         updateFormattingButtons();
     }
 });
-
-/* ======================================
-   TITLE AND EDITOR INPUT
-====================================== */
-
-if (titleInput) {
-    titleInput.addEventListener("input", markAsEdited);
-}
+// ======================================
+// EVENT LISTENERS
+// ======================================
 
 editor.addEventListener("input", markAsEdited);
 
-if (newDocumentButton) {
-    newDocumentButton.addEventListener("click", newDocument);
-}
+titleInput.addEventListener("input", markAsEdited);
 
-/* ======================================
-   SHARING
-====================================== */
+newDocumentButton.addEventListener("click", newDocument);
 
-if (shareButton) {
-    shareButton.addEventListener("click", () => {
-        if (typeof showSharing === "function") {
-            showSharing().catch(error => alert(error.message));
-        }
-    });
-}
-
-/* ======================================
-   RETRY SAVE
-====================================== */
-
-if (retrySaveButton) {
-    retrySaveButton.addEventListener("click", () => {
-        persistDocument(getActiveDocument()).catch(error => {
-            alert(error.message);
-        });
-    });
-}
-
-/* ======================================
-   WARN BEFORE LEAVING UNSAVED CHANGES
-====================================== */
-
-window.addEventListener("beforeunload", event => {
-    if (dirtyDocuments.size > 0) {
-        event.preventDefault();
-        event.returnValue = "";
-    }
+shareButton.addEventListener("click", function() {
+    alert(
+        "Sharing and permissions will be added when we build the backend."
+    );
 });
 
-/* ======================================
-   START APPLICATION
-====================================== */
 
-if (typeof startAuthentication === "function") {
-    startAuthentication();
-} else {
-    console.error("startAuthentication() was not found. Check auth.js.");
-}
+// ======================================
+// START APPLICATION
+// ======================================
+
+loadDocuments();
